@@ -55,6 +55,7 @@ def build_user_message(
     context_block: str,
     running_summary: str = "",
     last_turn: tuple[str, str] | None = None,
+    recent_turns: list[tuple[str, str]] | None = None,
 ) -> str:
     """Build the full user message for the LLM (§6 step 3)."""
     msg_parts = []
@@ -62,7 +63,12 @@ def build_user_message(
     if running_summary:
         msg_parts.append(f"Previous conversation summary:\n{running_summary}")
 
-    if last_turn:
+    if recent_turns and len(recent_turns) > 0:
+        history_lines = ["Recent conversation:"]
+        for q, a in recent_turns:
+            history_lines.append(f"Q: {q}\nA: {a}")
+        msg_parts.append("\n".join(history_lines))
+    elif last_turn:
         msg_parts.append(
             f"Last exchange:\nQ: {last_turn[0]}\nA: {last_turn[1]}"
         )

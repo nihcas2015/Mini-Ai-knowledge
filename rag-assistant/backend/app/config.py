@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY_3: str = ""
     GEMINI_MODEL: str = "gemini-2.0-flash"
 
-    # --- Reranking (flashrank) ---
+    # --- Reranking (Cohere + Flashrank fallback) ---
+    COHERE_API_KEY: str = ""
+    COHERE_RERANK_MODEL: str = "rerank-english-v3.0"
     RERANKER_MODEL: str = "ms-marco-MiniLM-L-12-v2"
 
     # --- Telegram notifications (§16) ---

@@ -98,6 +98,7 @@ async def ask_question(payload: AskRequest, request: Request):
                 context_block=context_block,
                 running_summary=session.running_summary,
                 last_turn=session.last_turn,
+                recent_turns=session.recent_turns,
             )
 
             # Step 5: Stream LLM response (§6 steps 4-5)

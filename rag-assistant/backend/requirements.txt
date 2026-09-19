@@ -14,7 +14,8 @@ langchain-text-splitters>=0.0.1
 # Embeddings (open-source, CPU-friendly)
 fastembed>=0.3.0
 
-# Reranking (open-source, CPU-friendly)
+# Reranking (Cohere API + open-source flashrank fallback)
+cohere>=4.40
 flashrank>=0.2.0
 
 # Vector store (cloud)

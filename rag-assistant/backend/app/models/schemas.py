@@ -56,7 +56,8 @@ class SessionState(BaseModel):
     created_at: float
     last_active: float
     running_summary: str = ""
-    last_turn: tuple[str, str] | None = None  # (question, answer)
+    last_turn: tuple[str, str] | None = None  # (question, answer) for backwards compat
+    recent_turns: list[tuple[str, str]] = Field(default_factory=list)  # last 3 turns
     has_uploaded_docs: bool = False
     total_upload_bytes: int = 0  # track cumulative upload size
     file_hashes: set[str] = set()  # SHA-256 hashes for dedup (§4 step 6)

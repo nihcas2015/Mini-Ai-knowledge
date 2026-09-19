@@ -42,6 +42,9 @@ class SessionManager:
         session = self.get_session(session_id)
         if session:
             session.last_turn = (question, answer)
+            session.recent_turns.append((question, answer))
+            if len(session.recent_turns) > 3:
+                session.recent_turns = session.recent_turns[-3:]
 
     def update_summary(self, session_id: str, new_summary: str):
         session = self.get_session(session_id)
