@@ -2,7 +2,7 @@
 Pydantic data models — exact schemas from SPEC.md §7.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
 
