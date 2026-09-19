@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'AI Knowledge Assistant',
-  description: 'Intelligent document-powered Q&A with streaming AI responses',
+  title: 'Mini AI Knowledge System',
+  description: 'Intelligent document-powered Q&A built by Sachin',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

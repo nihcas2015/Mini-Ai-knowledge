@@ -61,7 +61,7 @@ export default function ParticleBackground() {
           vx: (Math.random() - 0.5) * 1,
           vy: (Math.random() - 0.5) * 1,
           radius: Math.random() * 1.5 + 0.5,
-          color: `rgba(99, 102, 241, ${Math.random() * 0.4 + 0.1})`, // Using accent color faintly
+          color: `rgba(99, 102, 241, ${Math.random() * 0.4 + 0.1})`,
         });
       }
     };
@@ -73,11 +73,9 @@ export default function ParticleBackground() {
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Update and draw particles
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
 
-        // Mouse repel logic
         const dx = p.x - mouseX;
         const dy = p.y - mouseY;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -88,32 +86,26 @@ export default function ParticleBackground() {
           p.vy += (dy / dist) * force * mouseRepelStrength;
         }
 
-        // Apply friction to max speed
         const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
         if (speed > 2) {
           p.vx *= 0.95;
           p.vy *= 0.95;
         }
 
-        // Normal movement
         p.x += p.vx;
         p.y += p.vy;
 
-        // Bounce off walls
         if (p.x < 0 || p.x > width) p.vx *= -1;
         if (p.y < 0 || p.y > height) p.vy *= -1;
         
-        // Keep in bounds
         p.x = Math.max(0, Math.min(width, p.x));
         p.y = Math.max(0, Math.min(height, p.y));
 
-        // Draw particle
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
         ctx.fill();
 
-        // Draw connections
         for (let j = i + 1; j < particles.length; j++) {
           const p2 = particles[j];
           const cdx = p.x - p2.x;
@@ -124,7 +116,6 @@ export default function ParticleBackground() {
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
-            // Opacity based on distance
             const opacity = 1 - cdist / maxConnectionDistance;
             ctx.strokeStyle = `rgba(99, 102, 241, ${opacity * 0.2})`;
             ctx.stroke();

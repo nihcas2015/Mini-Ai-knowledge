@@ -102,7 +102,6 @@ export default function ChatWindow({ sessionId, sourceFilter }: ChatWindowProps)
 
   return (
     <div className="flex flex-col h-full relative">
-      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto animate-fade-in">
@@ -124,7 +123,6 @@ export default function ChatWindow({ sessionId, sourceFilter }: ChatWindowProps)
         )}
       </div>
 
-      {/* Input Area */}
       <div className="p-4 bg-dark-800/80 backdrop-blur border-t border-dark-700/50">
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit} className="relative flex items-center">

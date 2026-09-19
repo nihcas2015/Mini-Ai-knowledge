@@ -1,7 +1,3 @@
-"""
-Main entry point for the FastAPI backend application.
-"""
-
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -9,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from langchain_core.documents import Document
 
 from app.config import settings
 from app.routes import router, limiter
@@ -17,17 +14,15 @@ from app.rag_chain import (
     parse_pdf_file,
     split_into_hierarchical_chunks,
 )
-from langchain_core.documents import Document
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("app.main")
 
 
 async def index_base_knowledge():
-    """Index any base documents from knowledge_base/ into Qdrant Cloud on startup."""
     try:
         rag = get_rag_pipeline()
         rag.vector_store.init_base_collection()
@@ -37,6 +32,7 @@ async def index_base_knowledge():
             kb_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), kb_dir)
 
         if not os.path.exists(kb_dir):
+            logger.warning(f"Knowledge base directory not found: {kb_dir}")
             return
 
         files = [f for f in os.listdir(kb_dir) if f.lower().endswith((".pdf", ".txt", ".md"))]
@@ -47,7 +43,6 @@ async def index_base_knowledge():
         all_child_chunks = []
         for f in files:
             file_path = os.path.join(kb_dir, f)
-            logger.info(f"Indexing base knowledge document: {f}")
             try:
                 if f.lower().endswith(".pdf"):
                     with open(file_path, "rb") as pdf_f:
@@ -61,16 +56,16 @@ async def index_base_knowledge():
                         for p in paragraphs
                     ]
 
-                parents, children = split_into_hierarchical_chunks(docs, f, source_type="base")
+                _, children = split_into_hierarchical_chunks(docs, f, source_type="base")
                 rag.vector_store.upsert_chunks(rag.vector_store.base_client, settings.QDRANT_BASE_COLLECTION, children)
                 all_child_chunks.extend(children)
-                logger.info(f"  Indexed {f}: {len(children)} chunks")
+                logger.info(f"Indexed base document {f}: {len(children)} chunks")
             except Exception as e:
-                logger.error(f"  Failed to index {f}: {e}")
+                logger.error(f"Failed to index {f}: {e}")
 
         if all_child_chunks:
             rag.bm25.build_index(settings.QDRANT_BASE_COLLECTION, all_child_chunks)
-            logger.info(f"Base knowledge ready: {len(all_child_chunks)} chunks indexed.")
+            logger.info(f"Base knowledge ready: {len(all_child_chunks)} chunks indexed")
 
     except Exception as e:
         logger.error(f"Base knowledge indexing failed: {e}", exc_info=True)
@@ -78,23 +73,20 @@ async def index_base_knowledge():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Mini AI Knowledge Assistant backend...")
     await index_base_knowledge()
     yield
-    logger.info("Shutting down...")
 
 
 app = FastAPI(
-    title="Mini AI Knowledge Assistant",
+    title="Mini AI Knowledge System",
+    description="Knowledge Assistant built by Sachin",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -103,5 +95,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routes
 app.include_router(router)

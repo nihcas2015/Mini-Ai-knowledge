@@ -1,7 +1,3 @@
-"""
-FastAPI route endpoints for the Mini AI Knowledge System.
-"""
-
 import json
 import logging
 from typing import AsyncGenerator
@@ -26,17 +22,11 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 
-# =============================================================================
-# Health Check
-# =============================================================================
 @router.get("/health")
 async def health_check():
     return {"status": "ready"}
 
 
-# =============================================================================
-# Session Management
-# =============================================================================
 @router.post("/session")
 async def create_session():
     sid = get_session_manager().create_session()
@@ -59,9 +49,6 @@ async def clear_documents(session_id: str):
     return {"message": "Documents cleared"}
 
 
-# =============================================================================
-# Document Upload
-# =============================================================================
 @router.post("/upload", response_model=UploadResponse)
 @limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
 async def upload_document(
@@ -83,15 +70,12 @@ async def upload_document(
     try:
         rag = get_rag_pipeline()
 
-        # 1. Parse PDF
         docs = parse_pdf_file(file_bytes, file.filename)
         if not docs:
             raise HTTPException(status_code=422, detail="No readable text found in PDF.")
 
-        # 2. Hierarchical Chunking (LangChain)
-        parent_chunks, child_chunks = split_into_hierarchical_chunks(docs, file.filename, source_type="user")
+        _, child_chunks = split_into_hierarchical_chunks(docs, file.filename, source_type="user")
 
-        # 3. Upsert to session Qdrant & BM25
         user_client = rag.vector_store.get_or_create_user_client(session_id)
         rag.vector_store.upsert_chunks(user_client, f"user_{session_id}", child_chunks)
         rag.bm25.build_index(f"user_{session_id}", child_chunks)
@@ -110,9 +94,6 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =============================================================================
-# Ask & SSE Streaming
-# =============================================================================
 @router.post("/ask")
 @limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
 async def ask_question(request: Request, payload: AskRequest):
@@ -124,7 +105,6 @@ async def ask_question(request: Request, payload: AskRequest):
 
     async def sse_event_stream() -> AsyncGenerator[str, None]:
         try:
-            # 1. Hybrid retrieve
             chunks = await hybrid_retrieve(
                 query=payload.question,
                 session_id=payload.session_id,
@@ -134,16 +114,13 @@ async def ask_question(request: Request, payload: AskRequest):
                 reranker=rag.reranker,
             )
 
-            # 2. Stream tokens via LangChain chain
             full_text = ""
             async for token in rag.astream_rag_answer(payload.question, chunks, session):
                 full_text += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
-            # 3. Parse bracket citations [1], [2]
             citations = parse_bracket_citations(full_text, chunks)
 
-            # 4. Final payload
             final_res = AskResponse(
                 answer=full_text,
                 citations=citations,
@@ -152,7 +129,6 @@ async def ask_question(request: Request, payload: AskRequest):
             yield f"data: {json.dumps({'type': 'final', 'data': final_res.model_dump()})}\n\n"
             yield "data: [DONE]\n\n"
 
-            # 5. Update session memory
             get_session_manager().update_turn(payload.session_id, payload.question, full_text)
 
         except Exception as e:

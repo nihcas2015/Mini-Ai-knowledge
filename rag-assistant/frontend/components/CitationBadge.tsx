@@ -14,7 +14,6 @@ export default function CitationBadge({ citation }: CitationBadgeProps) {
         {citation.marker}
       </span>
 
-      {/* Popover */}
       <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 rounded-lg bg-dark-800/95 backdrop-blur border border-dark-600 shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all duration-200 z-50 origin-bottom scale-95 group-hover:scale-100">
         <div className="flex items-center justify-between mb-2 pb-2 border-b border-dark-700/50">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -42,7 +41,6 @@ export default function CitationBadge({ citation }: CitationBadgeProps) {
           </div>
         )}
         
-        {/* Triangle pointer */}
         <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-dark-600" />
       </span>
     </span>

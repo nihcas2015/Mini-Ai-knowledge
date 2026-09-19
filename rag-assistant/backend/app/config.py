@@ -1,7 +1,3 @@
-"""
-Application configuration loaded from environment variables.
-"""
-
 from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,46 +10,38 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Groq (Primary LLM) ---
     GROQ_API_KEY_1: str = ""
     GROQ_API_KEY_2: str = ""
     GROQ_API_KEY_3: str = ""
     GROQ_MODEL: str = "openai/gpt-oss-20b"
 
-    # --- OpenRouter (Fallback LLM) ---
     OPENROUTER_API_KEY_1: str = ""
     OPENROUTER_API_KEY_2: str = ""
     OPENROUTER_API_KEY_3: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct:free"
 
-    # --- Google Gemini (Fallback LLM) ---
     GEMINI_API_KEY_1: str = ""
     GEMINI_API_KEY_2: str = ""
     GEMINI_API_KEY_3: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
-    # --- Cohere Reranker (Primary) ---
     COHERE_API_KEY: str = ""
     COHERE_RERANK_MODEL: str = "rerank-english-v3.0"
-
-    # --- FlashRank Reranker (Local Fallback) ---
     RERANKER_MODEL: str = "ms-marco-MiniLM-L-12-v2"
 
-    # --- Embedding model ---
+    ALLOWED_ORIGINS: List[str] = Field(default=["*"])
+
     EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"
     EMBEDDING_BATCH_SIZE: int = 32
 
-    # --- Qdrant Cloud ---
     QDRANT_CLOUD_URL: str = ""
     QDRANT_CLOUD_API_KEY: str = ""
     QDRANT_BASE_PATH: str = "/app/data/qdrant_base"
     QDRANT_BASE_COLLECTION: str = "base_knowledge"
 
-    # --- Knowledge Base Directory ---
     KNOWLEDGE_BASE_DIR: str = "knowledge_base"
 
-    # --- Chunking & Retrieval parameters ---
     PARENT_CHUNK_TARGET_SIZE: int = 1750
     PARENT_CHUNK_OVERLAP: int = 0
     CHILD_CHUNK_TARGET_SIZE: int = 400
@@ -67,15 +55,8 @@ class Settings(BaseSettings):
     RERANK_TOP_N: int = 5
     RELEVANCE_THRESHOLD: float = 0.3
 
-    # --- Sessions & Limits ---
-    SESSION_TTL_MINUTES: int = 30
-    RATE_LIMIT_PER_MINUTE: int = 10
-    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
-
-    # --- CORS ---
-    ALLOWED_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "*"]
-    )
+    RATE_LIMIT_PER_MINUTE: int = 20
+    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
 
     @property
     def groq_keys(self) -> List[str]:

@@ -1,7 +1,3 @@
-/**
- * Frontend API client with Next.js proxy support to prevent HTTPS Mixed-Content blocking.
- */
-
 function getApiUrl(): string {
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     return '/api/backend';
@@ -30,8 +26,7 @@ export async function uploadDocument(sessionId: string, file: File) {
     try {
       const errorData = await res.json();
       if (errorData.detail) errorMessage = errorData.detail;
-    } catch (e) {
-      // Ignored if json parse fails
+    } catch {
     }
     throw new Error(errorMessage);
   }
@@ -124,8 +119,7 @@ export async function askQuestion(
             } else if (data.type === 'error' && data.content) {
               onError(new Error(data.content));
             }
-          } catch (e) {
-            // Skip malformed JSON
+          } catch {
           }
         }
       }

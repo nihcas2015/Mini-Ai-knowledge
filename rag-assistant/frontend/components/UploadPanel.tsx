@@ -122,7 +122,6 @@ export default function UploadPanel({ sessionId }: UploadPanelProps) {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-slate-300 truncate" title={file.name}>{file.name}</p>
                     
-                    {/* Status & Progress Bar */}
                     <div className="mt-1.5 flex items-center gap-2">
                       <div className="h-1 flex-1 bg-dark-900 rounded-full overflow-hidden">
                         {(file.status === 'uploading' || file.status === 'processing') && (

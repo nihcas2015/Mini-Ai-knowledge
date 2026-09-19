@@ -1,19 +1,7 @@
-"""
-LangChain-powered RAG Pipeline for the Mini AI Knowledge System.
-Integrates:
-- LangChain Document and TextSplitters
-- FastEmbed embeddings & Qdrant Cloud vector search
-- BM25 sparse keyword search
-- Cohere / FlashRank neural reranking
-- LangChain LCEL (LangChain Expression Language) streaming chains
-- Identity: Mini AI Knowledge System built by Sachin
-"""
-
 import os
 import re
 import uuid
 import time
-import json
 import hashlib
 import logging
 from typing import List, Dict, Any, Optional, Tuple, AsyncGenerator
@@ -34,9 +22,6 @@ from app.models import Citation, SessionState
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# 1. System Prompt & Instructions
-# =============================================================================
 SYSTEM_PROMPT = (
     "You are the Mini AI Knowledge System, an advanced intelligent assistant designed and built by Sachin.\n\n"
     "Identity Rules (STRICT):\n"
@@ -50,11 +35,7 @@ SYSTEM_PROMPT = (
 )
 
 
-# =============================================================================
-# 2. Document Extraction & Hierarchical Chunking (LangChain)
-# =============================================================================
 def parse_pdf_file(file_bytes: bytes, filename: str) -> List[Document]:
-    """Parse PDF file bytes into LangChain Document objects."""
     import tempfile
     from unstructured.partition.pdf import partition_pdf
 
@@ -87,11 +68,6 @@ def parse_pdf_file(file_bytes: bytes, filename: str) -> List[Document]:
 def split_into_hierarchical_chunks(
     docs: List[Document], filename: str, source_type: str = "user"
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Hierarchical chunking using LangChain's RecursiveCharacterTextSplitter:
-    - Parent chunks: ~1750 characters (returned to LLM for full context)
-    - Child chunks: ~400 characters (dense vector search & BM25)
-    """
     parent_splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.PARENT_CHUNK_TARGET_SIZE,
         chunk_overlap=settings.PARENT_CHUNK_OVERLAP,
@@ -104,7 +80,6 @@ def split_into_hierarchical_chunks(
     parent_chunks = []
     child_chunks = []
 
-    # Group document text by page
     pages_text: Dict[int, List[str]] = {}
     for d in docs:
         p = d.metadata.get("page_number", 1)
@@ -139,9 +114,6 @@ def split_into_hierarchical_chunks(
     return parent_chunks, child_chunks
 
 
-# =============================================================================
-# 3. Embeddings & Vector Storage
-# =============================================================================
 def _chunk_id_to_int(chunk_id: str) -> int:
     digest = hashlib.sha256(chunk_id.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], byteorder="big", signed=False)
@@ -152,7 +124,6 @@ class VectorStoreManager:
         logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
         self.embedder = TextEmbedding(model_name=settings.EMBEDDING_MODEL)
 
-        # Base collection in Qdrant Cloud
         if settings.QDRANT_CLOUD_URL and settings.QDRANT_CLOUD_API_KEY:
             logger.info(f"Connecting to Qdrant Cloud: {settings.QDRANT_CLOUD_URL}")
             self.base_client = QdrantClient(
@@ -220,9 +191,6 @@ class VectorStoreManager:
             del self.user_clients[session_id]
 
 
-# =============================================================================
-# 4. Sparse BM25 Keyword Search
-# =============================================================================
 class BM25IndexManager:
     def __init__(self):
         self.indexes: Dict[str, Tuple[BM25Okapi, List[Dict[str, Any]]]] = {}
@@ -243,9 +211,6 @@ class BM25IndexManager:
         return [{**chunks[i], "score": float(score)} for i, score in scored_pairs if score > 0]
 
 
-# =============================================================================
-# 5. Reranking Service (Cohere API + FlashRank Fallback)
-# =============================================================================
 class RerankerService:
     def __init__(self):
         self.cohere_client = None
@@ -261,7 +226,7 @@ class RerankerService:
         try:
             from flashrank import Ranker
             self.flashrank = Ranker(model_name=settings.RERANKER_MODEL)
-            logger.info("Loaded FlashRank fallback reranker")
+            logger.info("Loaded FlashRank reranker")
         except Exception as e:
             logger.warning(f"Could not initialize FlashRank: {e}")
 
@@ -269,7 +234,6 @@ class RerankerService:
         if not documents:
             return []
 
-        # 1. Try Cohere
         if self.cohere_client:
             try:
                 texts = [d.get("child_text", d.get("parent_text", "")) for d in documents]
@@ -288,7 +252,6 @@ class RerankerService:
             except Exception as e:
                 logger.warning(f"Cohere rerank failed: {e}. Falling back to FlashRank.")
 
-        # 2. Try FlashRank
         if self.flashrank:
             try:
                 from flashrank import RerankRequest
@@ -306,9 +269,6 @@ class RerankerService:
         return documents[:top_n]
 
 
-# =============================================================================
-# 6. Hybrid Retrieval Pipeline
-# =============================================================================
 async def hybrid_retrieve(
     query: str,
     session_id: Optional[str],
@@ -322,15 +282,12 @@ async def hybrid_retrieve(
 
     query_vec = vector_store.embed_query(query)
 
-    # Dense retrieval
     base_dense = vector_store.search_dense(vector_store.base_client, settings.QDRANT_BASE_COLLECTION, query_vec, settings.DENSE_TOP_K) if search_base else []
     user_dense = vector_store.search_dense(vector_store.user_clients[session_id], f"user_{session_id}", query_vec, settings.DENSE_TOP_K) if search_user else []
 
-    # Sparse retrieval
     base_sparse = bm25.search(settings.QDRANT_BASE_COLLECTION, query, settings.BM25_TOP_K) if search_base else []
     user_sparse = bm25.search(f"user_{session_id}", query, settings.BM25_TOP_K) if search_user else []
 
-    # Weighted Ensemble Merge (0.6 dense + 0.4 sparse)
     merged: Dict[str, Dict[str, Any]] = {}
     for chunk in base_dense + user_dense:
         cid = chunk.get("chunk_id", "")
@@ -352,21 +309,15 @@ async def hybrid_retrieve(
     if not candidates:
         return []
 
-    # Rerank
     reranked = reranker.rerank(query, candidates, top_n=settings.RERANK_TOP_N)
 
-    # Threshold filter
     if reranked and reranked[0].get("rerank_score", reranked[0].get("ensemble_score", 0)) < settings.RELEVANCE_THRESHOLD:
         return []
 
     return reranked[:settings.RERANK_TOP_N]
 
 
-# =============================================================================
-# 7. LangChain Multi-Provider Model Factory & LCEL Chains
-# =============================================================================
 def get_langchain_chat_model(provider: str = "groq", key: str = ""):
-    """Build a standard LangChain ChatModel instance."""
     if provider == "groq":
         return ChatOpenAI(
             base_url="https://api.groq.com/openai/v1",
@@ -400,7 +351,6 @@ class LangChainRAGPipeline:
         self.bm25 = BM25IndexManager()
         self.reranker = RerankerService()
 
-        # Build prompt template using standard LangChain
         self.prompt_template = ChatPromptTemplate.from_messages([
             ("system", SYSTEM_PROMPT),
             ("human", (
@@ -426,8 +376,6 @@ class LangChainRAGPipeline:
         chunks: List[Dict[str, Any]],
         session: SessionState,
     ) -> AsyncGenerator[str, None]:
-        """Stream response tokens using LangChain LCEL chain: prompt | llm | StrOutputParser()."""
-        # Format context block with numbered citations [1], [2]
         if chunks:
             context_parts = []
             for i, c in enumerate(chunks, 1):
@@ -442,7 +390,6 @@ class LangChainRAGPipeline:
                 "offer to assist with any uploaded documents.)"
             )
 
-        # Format conversation history
         history_parts = []
         if session.running_summary:
             history_parts.append(f"Prior Conversation Summary: {session.running_summary}")
@@ -452,7 +399,6 @@ class LangChainRAGPipeline:
                 history_parts.append(f"User: {q}\nAssistant: {a}")
         history_block = "\n".join(history_parts) if history_parts else "(No prior conversation history)"
 
-        # Fallback rotation over candidate LLMs
         for provider, key in self.get_llm_candidates():
             try:
                 llm = get_langchain_chat_model(provider, key)
@@ -466,16 +412,12 @@ class LangChainRAGPipeline:
                     yield token
                 return
             except Exception as e:
-                logger.warning(f"Provider {provider} failed: {e}. Trying next in chain...")
+                logger.warning(f"Provider {provider} failed: {e}. Trying next provider...")
 
         yield "The assistant is temporarily unavailable. Please try again in a moment."
 
 
-# =============================================================================
-# 8. Citation Parser
-# =============================================================================
 def parse_bracket_citations(answer: str, chunks: List[Dict[str, Any]]) -> List[Citation]:
-    """Parse [n] citations from answer and link to chunk metadata."""
     citations = []
     seen = set()
     for match in re.finditer(r"\[(\d+)\]", answer):
@@ -496,9 +438,6 @@ def parse_bracket_citations(answer: str, chunks: List[Dict[str, Any]]) -> List[C
     return citations
 
 
-# =============================================================================
-# 9. Session Manager
-# =============================================================================
 class SessionManager:
     def __init__(self):
         self.sessions: Dict[str, SessionState] = {}
@@ -532,7 +471,6 @@ class SessionManager:
             del self.sessions[sid]
 
 
-# Global singletons
 _rag_pipeline = None
 _session_manager = None
 
