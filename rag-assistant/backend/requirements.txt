@@ -1,40 +1,31 @@
-# Framework
+# Web Framework
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-multipart>=0.0.6
+slowapi>=0.1.9
 
-# PDF parsing
+# Document Parsing
 unstructured[pdf]>=0.11.0
 
-# Chunking
-langchain-text-splitters>=0.0.1
+# LangChain Ecosystem
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-openai>=0.1.0
+langchain-text-splitters>=0.2.0
 
-# Embeddings (open-source, CPU-friendly)
+# Embeddings & Vector Storage
 fastembed>=0.3.0
+qdrant-client>=1.7.0
+rank-bm25>=0.2.2
 
-# Reranking (Cohere API + open-source flashrank fallback)
+# Reranking
 cohere>=4.40
 flashrank>=0.2.0
 
-# Vector store (cloud)
-qdrant-client>=1.7.0
-
-# BM25
-rank-bm25>=0.2.2
-
-# LLM providers
-groq>=0.4.0
+# LLM Providers
 openai>=1.6.0
+groq>=0.4.0
 google-generativeai>=0.3.0
-
-# Admin notifications
-httpx>=0.25.0
-
-# Rate limiting
-slowapi>=0.1.9
-
-# Testing
-pytest>=7.4.0
-pytest-asyncio>=0.23.0
