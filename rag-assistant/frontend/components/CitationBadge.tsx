@@ -9,8 +9,8 @@ interface CitationBadgeProps {
 
 export default function CitationBadge({ citation }: CitationBadgeProps) {
   return (
-    <span className="relative group inline-block mx-1">
-      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent text-[10px] font-bold text-white cursor-pointer hover:bg-accent-light transition-colors shadow-sm">
+    <span className="relative group inline-flex items-center align-middle mx-0.5">
+      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent text-[10px] font-bold text-white cursor-pointer hover:bg-accent-light transition-colors shadow-sm">
         {citation.marker}
       </span>
 

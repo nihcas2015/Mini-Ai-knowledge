@@ -1,10 +1,11 @@
 'use client';
 
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Citation } from '@/lib/api';
 import CitationBadge from './CitationBadge';
 import { Bot, User } from 'lucide-react';
-import React from 'react';
 
 export interface Message {
   id: string;
@@ -22,9 +23,59 @@ interface MessageBubbleProps {
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
+  const processedContent = React.useMemo(() => {
+    if (isUser) return message.content;
+    // Map [1], [2] to [1](#cite-1) so markdown tables, lists, and blocks stay 100% syntactically valid
+    return message.content.replace(/\[(\d+)\]/g, '[$1](#cite-$1)');
+  }, [message.content, isUser]);
+
   const components: Record<string, React.ComponentType<any>> = {
-    p: ({ children, ...props }: any) => <p className="mb-4 last:mb-0 leading-relaxed" {...props}>{children}</p>,
-    a: (props: any) => <a {...props} className="text-accent hover:underline" />,
+    p: ({ children, ...props }: any) => (
+      <p className="mb-3 last:mb-0 leading-relaxed text-sm" {...props}>{children}</p>
+    ),
+    a: ({ href, children, ...props }: any) => {
+      if (href && href.startsWith('#cite-')) {
+        const marker = parseInt(href.replace('#cite-', ''), 10);
+        const citation = message.citations?.find(c => c.marker === marker);
+        if (citation) {
+          return <CitationBadge citation={citation} />;
+        }
+        return (
+          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-700 text-[10px] font-medium text-slate-300 mx-0.5 align-middle">
+            {children}
+          </span>
+        );
+      }
+      return (
+        <a href={href} target="_blank" rel="noreferrer" className="text-accent hover:underline" {...props}>
+          {children}
+        </a>
+      );
+    },
+    table: ({ children }: any) => (
+      <div className="overflow-x-auto my-3 rounded-lg border border-dark-700">
+        <table className="min-w-full divide-y divide-dark-700 text-xs text-left">
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children }: any) => (
+      <thead className="bg-dark-800/80 text-slate-200 font-semibold">{children}</thead>
+    ),
+    tbody: ({ children }: any) => (
+      <tbody className="divide-y divide-dark-700/50 bg-dark-900/30">{children}</tbody>
+    ),
+    th: ({ children }: any) => (
+      <th className="px-3 py-2 text-slate-300 font-semibold border-b border-dark-700">{children}</th>
+    ),
+    td: ({ children }: any) => (
+      <td className="px-3 py-2 text-slate-300 border-b border-dark-700/50 align-top">{children}</td>
+    ),
+    code: ({ children, className, ...props }: any) => (
+      <code className="bg-dark-900/90 text-indigo-300 px-1.5 py-0.5 rounded text-xs font-mono border border-dark-700/40" {...props}>
+        {children}
+      </code>
+    ),
   };
 
   const renderContent = () => {
@@ -32,54 +83,12 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       return <div className="text-sm whitespace-pre-wrap">{message.content}</div>;
     }
 
-    const citationRegex = /\[(\d+)\]/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = citationRegex.exec(message.content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(
-          <span key={`md-${lastIndex}`} className="prose prose-invert max-w-none text-sm inline">
-            <ReactMarkdown components={components}>
-              {message.content.slice(lastIndex, match.index)}
-            </ReactMarkdown>
-          </span>
-        );
-      }
-      
-      const citationId = parseInt(match[1], 10);
-      const citation = message.citations?.find(c => c.marker === citationId);
-      
-      if (citation) {
-        parts.push(<CitationBadge key={`cite-${match.index}`} citation={citation} />);
-      } else {
-        parts.push(<span key={`text-${match.index}`}>[{match[1]}]</span>);
-      }
-      
-      lastIndex = citationRegex.lastIndex;
-    }
-
-    if (lastIndex < message.content.length) {
-      parts.push(
-        <span key={`md-${lastIndex}`} className="prose prose-invert max-w-none text-sm inline">
-          <ReactMarkdown components={components}>
-            {message.content.slice(lastIndex)}
-          </ReactMarkdown>
-        </span>
-      );
-    }
-
     return (
       <div className="flex-1 min-w-0">
-        <div className="inline-block break-words w-full">
-          {parts.length > 0 ? parts : (
-            <div className="prose prose-invert max-w-none text-sm">
-              <ReactMarkdown components={components}>
-                {message.content}
-              </ReactMarkdown>
-            </div>
-          )}
+        <div className="inline-block break-words w-full prose prose-invert max-w-none text-sm">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {processedContent}
+          </ReactMarkdown>
           {message.isStreaming && (
             <span className="inline-block w-2 h-4 ml-1 bg-slate-400 animate-pulse-slow align-middle" />
           )}
