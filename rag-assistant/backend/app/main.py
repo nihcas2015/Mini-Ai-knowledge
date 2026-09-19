@@ -23,10 +23,31 @@ logging.basicConfig(
 logger = logging.getLogger("app.main")
 
 
-async def index_base_knowledge():
+import threading
+
+def init_base_knowledge_worker():
     try:
         rag = get_rag_pipeline()
         rag.vector_store.init_base_collection()
+
+        # Fast path: check if Qdrant Cloud base collection already has points
+        try:
+            col = rag.vector_store.base_client.get_collection(settings.QDRANT_BASE_COLLECTION)
+            if col.points_count and col.points_count > 0:
+                logger.info(f"Base collection already exists with {col.points_count} points in Qdrant Cloud. Loading BM25 index from stored payloads...")
+                records, _ = rag.vector_store.base_client.scroll(
+                    collection_name=settings.QDRANT_BASE_COLLECTION,
+                    limit=10000,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                chunks = [r.payload for r in records if r.payload]
+                if chunks:
+                    rag.bm25.build_index(settings.QDRANT_BASE_COLLECTION, chunks)
+                    logger.info(f"Base knowledge ready: {len(chunks)} chunks loaded into BM25 index.")
+                    return
+        except Exception as check_err:
+            logger.warning(f"Could not verify existing collection points: {check_err}. Proceeding with file indexing...")
 
         kb_dir = settings.KNOWLEDGE_BASE_DIR
         if not os.path.isabs(kb_dir):
@@ -74,7 +95,8 @@ async def index_base_knowledge():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    asyncio.create_task(index_base_knowledge())
+    thread = threading.Thread(target=init_base_knowledge_worker, daemon=True)
+    thread.start()
     yield
 
 
