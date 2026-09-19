@@ -19,8 +19,6 @@ env/
 
 # Database / Storage
 qdrant_storage/
-backend/knowledge_base/*
-!backend/knowledge_base/.gitkeep
 
 # OS
 .DS_Store

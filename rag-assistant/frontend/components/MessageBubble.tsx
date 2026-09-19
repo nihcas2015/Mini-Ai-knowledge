@@ -105,9 +105,19 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
 
           {!isUser && !message.isStreaming && (
             <div className="mt-2 pt-2 border-t border-dark-700/50 flex items-center justify-between">
+            <div className="mt-2 pt-2 border-t border-dark-700/50 flex items-center justify-between gap-3">
               <span className="text-[10px] text-slate-500 font-medium">
                 Mini AI Knowledge System • Built by Sachin
               </span>
+              {(!message.citations || message.citations.length === 0) ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-400/90 border border-amber-500/20 tracking-wide">
+                  LLM Reply
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/10 text-indigo-300/90 border border-indigo-500/20 tracking-wide">
+                  Grounded • {message.citations.length} {message.citations.length === 1 ? 'source' : 'sources'}
+                </span>
+              )}
             </div>
           )}
         </div>
