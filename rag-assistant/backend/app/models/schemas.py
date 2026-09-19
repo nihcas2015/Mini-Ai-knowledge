@@ -30,6 +30,7 @@ class AskRequest(BaseModel):
     """Request body for POST /ask."""
     session_id: str
     question: str
+    source_filter: Literal["base", "user", "both"] = "both"
 
 
 class AskResponse(BaseModel):

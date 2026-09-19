@@ -161,6 +161,11 @@ class LLMRouter:
             return response.choices[0].message.content
 
     async def _try_gemini(self, key: str, system_prompt: str, user_message: str, stream: bool):
+        # NOTE: genai.configure() sets global SDK state. Under real concurrent
+        # requests this could race with another in-flight Gemini call using a
+        # different key. Acceptable for this project's single-instance,
+        # low-concurrency deployment target (§9), but documented here as a
+        # known limitation rather than a silent risk.
         genai.configure(api_key=key)
         model = genai.GenerativeModel(
             model_name=settings.GEMINI_MODEL,
@@ -172,8 +177,17 @@ class LLMRouter:
             stream=stream
         )
         if stream:
+            # `response` here is a synchronous, blocking generator from the
+            # google-generativeai SDK. Iterating it directly inside an async
+            # generator would block the event loop on every chunk. Pull each
+            # chunk via asyncio.to_thread so other requests can still be
+            # served while we wait on the network.
             async def gen():
-                for chunk in response:
+                iterator = iter(response)
+                while True:
+                    chunk = await asyncio.to_thread(next, iterator, None)
+                    if chunk is None:
+                        break
                     if chunk.text:
                         yield chunk.text
             return gen()

@@ -2,13 +2,6 @@
 
 import { useState } from 'react';
 import { FileText } from 'lucide-react';
-
-interface Citation {
-  filename: string;
-  page_number: number;
-  source_type: string;
-  snippet: string;
-}
 import { Citation } from '@/lib/api';
 
 export default function CitationBadge({ citation, marker }: { citation: Citation; marker: string }) {

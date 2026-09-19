@@ -2,33 +2,15 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2 } from 'lucide-react';
-import MessageBubble from './MessageBubble';
-import { askQuestion } from '@/lib/api';
-import { askQuestion, Citation } from '@/lib/api';
-
-interface Citation {
-  marker: string;
-  filename: string;
-  page_number: number;
-  source_type: string;
-  snippet: string;
-}
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  citations?: Citation[];
-  provider_used?: string;
-  isStreaming?: boolean;
-}
+import MessageBubble, { Message } from './MessageBubble';
+import { askQuestion, SourceFilter } from '@/lib/api';
 
 export default function ChatWindow({ 
   sessionId, 
   sourceFilter 
 }: { 
   sessionId: string;
-  sourceFilter: string;
+  sourceFilter: SourceFilter;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -63,6 +45,7 @@ export default function ChatWindow({
     await askQuestion(
       sessionId,
       userMessage.content,
+      sourceFilter,
       (token) => {
         setMessages(prev => prev.map(msg => 
           msg.id === assistantId ? { ...msg, content: msg.content + token } : msg

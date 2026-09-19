@@ -51,6 +51,12 @@ Groq → OpenRouter → Gemini, with **3 API keys per provider** (9 total attemp
 - 429s try the next key; 401/403s mark the key as dead and trigger a Telegram admin alert
 - On total failure, returns a graceful message and notifies the admin
 
+### Real-Time Streaming
+`/ask` streams the answer token-by-token over Server-Sent Events as the LLM generates it (not a single blocking response), so the chat UI shows the answer typing in live rather than waiting for the full generation to finish. The frontend reads the stream via `fetch()` + a manual reader (not `EventSource`, since `EventSource` can't send a POST body) and renders tokens as they arrive; a final SSE event carries the validated citations and which provider served the request.
+
+### Source Filtering
+The "base only / my docs only / both" toggle in the sidebar is wired end-to-end: it's sent as `source_filter` on every `/ask` request and the retrieval pipeline skips whichever collection(s) the filter excludes, rather than always searching everything.
+
 ---
 
 ## Design Decisions

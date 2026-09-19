@@ -1,19 +1,16 @@
 """
-Ask route.
-POST /ask — ask a question, streamed via SSE.
+POST /ask — answer a question with hybrid retrieval + streaming LLM + citations.
 """
 
-import json
 import asyncio
+import json
 import logging
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.rate_limit import limiter
 from app.config import settings
-from app.models.schemas import AskRequest, AskResponse, Citation
+from app.models.schemas import AskRequest, AskResponse
 from app.core.memory import get_session_manager
 from app.core.embeddings import get_embedding_service
 from app.core.vector_store import get_vector_store
@@ -21,30 +18,29 @@ from app.core.bm25_index import get_bm25_manager
 from app.core.llm_router import get_llm_router
 from app.core.retrieval import retrieve
 from app.core.generation import (
+    SYSTEM_PROMPT,
+    FALLBACK_MESSAGE,
+    UNAVAILABLE_MESSAGE,
     build_context_block,
     build_user_message,
     parse_citations,
     condense_question,
     update_running_summary,
-    SYSTEM_PROMPT,
-    FALLBACK_MESSAGE,
-    UNAVAILABLE_MESSAGE,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/ask")
 @limiter.limit(settings.RATE_LIMIT)
-async def ask_question(request: AskRequest, http_request: Request):
+async def ask_question(payload: AskRequest, request: Request):
     """
     Ask a question against the knowledge base.
     Returns an SSE stream of tokens, with a final event containing the full AskResponse.
     """
     session_manager = get_session_manager()
-    session = session_manager.get_session(request.session_id)
+    session = session_manager.get_session(payload.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -54,7 +50,7 @@ async def ask_question(request: AskRequest, http_request: Request):
     llm_router = get_llm_router()
 
     async def event_stream():
-        question = request.question
+        question = payload.question
         provider_used = "none"
 
         try:
@@ -76,10 +72,11 @@ async def ask_question(request: AskRequest, http_request: Request):
             # Step 2: Retrieve relevant chunks (§5)
             chunks = await retrieve(
                 query=condensed,
-                session_id=request.session_id,
+                session_id=payload.session_id,
                 embedding_service=embedding_service,
                 vector_store=vector_store,
                 bm25_manager=bm25_manager,
+                source_filter=payload.source_filter,
             )
 
             # Step 3: If no relevant chunks found (below threshold), return fallback
@@ -137,7 +134,7 @@ async def ask_question(request: AskRequest, http_request: Request):
             # Step 8: Update conversation memory async (§6 step 8)
             asyncio.create_task(_update_memory(
                 session_manager=session_manager,
-                session_id=request.session_id,
+                session_id=payload.session_id,
                 question=question,
                 answer=full_answer,
                 llm_router=llm_router,
@@ -177,18 +174,14 @@ async def _update_memory(
         session_manager.update_conversation(session_id, question, answer)
 
         # Update running summary
-        try:
-            new_summary = await update_running_summary(
-                current_summary=session.running_summary,
-                question=question,
-                answer=answer,
-                llm_router=llm_router,
-            )
-            session_manager.update_summary(session_id, new_summary)
-            logger.debug(f"Memory updated for session {session_id}")
-        except Exception as e:
-            logger.warning(f"Summary update failed for session {session_id}: {e}")
+        new_summary = await update_running_summary(
+            current_summary=session.running_summary,
+            question=question,
+            answer=answer,
+            llm_router=llm_router,
+        )
+        session_manager.update_summary(session_id, new_summary)
+        logger.info(f"Updated summary for session {session_id}")
 
     except Exception as e:
-        logger.error(f"Memory update failed: {e}", exc_info=True)
-
+        logger.warning(f"Failed to update conversation memory: {e}")

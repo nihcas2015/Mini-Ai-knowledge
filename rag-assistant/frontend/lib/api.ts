@@ -16,7 +16,6 @@ export async function uploadDocument(sessionId: string, file: File) {
     method: 'POST',
     body: formData,
   });
-  if (!res.ok) throw new Error('Failed to upload document');
   if (!res.ok) {
     let errorMessage = 'Failed to upload document';
     try {
@@ -68,9 +67,12 @@ export interface AskResult {
  *   data: {"type":"error","content":"..."}
  *   data: [DONE]
  */
+export type SourceFilter = 'base' | 'user' | 'both';
+
 export async function askQuestion(
   sessionId: string,
   question: string,
+  sourceFilter: SourceFilter,
   onToken: (token: string) => void,
   onFinish: (result: AskResult) => void,
   onError: (error: Error) => void
@@ -81,7 +83,11 @@ export async function askQuestion(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ session_id: sessionId, question }),
+      body: JSON.stringify({
+        session_id: sessionId,
+        question,
+        source_filter: sourceFilter,
+      }),
     });
 
     if (!res.ok) {

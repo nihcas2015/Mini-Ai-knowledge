@@ -13,8 +13,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -202,8 +200,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Rate limiting (§8) ---
-limiter = Limiter(key_func=get_remote_address)
+# --- Rate limiting (§8) — reuse the single shared Limiter instance so every
+# route's @limiter.limit(...) decorator shares the same storage/state as
+# the one registered on app.state (see app/core/rate_limit.py). ---
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

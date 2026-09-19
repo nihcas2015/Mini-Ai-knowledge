@@ -7,8 +7,6 @@ DELETE /session/{session_id}/documents — clear user-uploaded docs
 
 import logging
 from fastapi import APIRouter, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.rate_limit import limiter
 from app.config import settings
@@ -18,7 +16,6 @@ from app.core.bm25_index import get_bm25_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/session")

@@ -2,17 +2,8 @@
 
 import React from 'react';
 import CitationBadge from './CitationBadge';
-import { Citation, AskResult } from '@/lib/api';
+import { Citation } from '@/lib/api';
 
-interface Citation {
-  marker: string;
-  filename: string;
-  page_number: number;
-  source_type: string;
-  snippet: string;
-}
-
-interface Message {
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -29,16 +20,13 @@ export default function MessageBubble({ message }: { message: Message }) {
     if (isUser) return message.content;
 
     const parts = message.content.split(/(\[\d+\])/g);
-    
+
     return parts.map((part, index) => {
       const match = part.match(/\[(\d+)\]/);
       if (match && message.citations) {
-        const marker = match[0];
-        const citation = message.citations.find(c => c.marker === marker || c.marker === match[1]);
         const markerNum = parseInt(match[1], 10);
         const citation = message.citations.find(c => c.marker === markerNum);
         if (citation) {
-          return <CitationBadge key={index} citation={citation} marker={marker} />;
           return <CitationBadge key={index} citation={citation} marker={`[${markerNum}]`} />;
         }
       }
@@ -48,10 +36,10 @@ export default function MessageBubble({ message }: { message: Message }) {
 
   return (
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div 
+      <div
         className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 shadow-sm
-          ${isUser 
-            ? 'bg-blue-600 text-white rounded-br-none' 
+          ${isUser
+            ? 'bg-blue-600 text-white rounded-br-none'
             : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'
           }`}
       >

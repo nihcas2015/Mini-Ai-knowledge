@@ -19,6 +19,7 @@ async def retrieve(
     embedding_service,
     vector_store,
     bm25_manager,
+    source_filter: str = "both",
 ) -> list[dict]:
     """
     Full hybrid retrieval pipeline (§5):
@@ -29,25 +30,33 @@ async def retrieve(
     7. Cohere rerank (with fallback to ensemble order)
     8. Relevance threshold check
     9. Return top-5 chunks
+
+    source_filter: "base" (search only base knowledge), "user" (search only
+    this session's uploaded docs), or "both" (default — search everything).
+    Powers the frontend's "base only / my docs only / both" toggle.
     """
+    search_base = source_filter in ("base", "both")
+    search_user = source_filter in ("user", "both")
+
     # Step 1: Embed query
     query_vector = embedding_service.embed_query(query)
 
-    # Step 2: Dense retrieval — base collection (always)
+    # Step 2: Dense retrieval — base collection
     base_dense = []
-    try:
-        base_dense = vector_store.search(
-            client=vector_store.base_client,
-            collection_name=settings.QDRANT_BASE_COLLECTION,
-            query_vector=query_vector,
-            top_k=settings.DENSE_TOP_K,
-        )
-    except Exception as e:
-        logger.warning(f"Base dense search failed: {e}")
+    if search_base:
+        try:
+            base_dense = vector_store.search(
+                client=vector_store.base_client,
+                collection_name=settings.QDRANT_BASE_COLLECTION,
+                query_vector=query_vector,
+                top_k=settings.DENSE_TOP_K,
+            )
+        except Exception as e:
+            logger.warning(f"Base dense search failed: {e}")
 
     # Step 3: Dense retrieval — user collection (if exists)
     user_dense = []
-    if session_id and vector_store.has_user_collection(session_id):
+    if search_user and session_id and vector_store.has_user_collection(session_id):
         try:
             user_client = vector_store.user_clients[session_id]
             user_dense = vector_store.search(
@@ -61,18 +70,19 @@ async def retrieve(
 
     # Step 4: BM25 — base index
     base_sparse = []
-    try:
-        base_sparse = bm25_manager.search(
-            collection_name=settings.QDRANT_BASE_COLLECTION,
-            query=query,
-            top_k=settings.BM25_TOP_K,
-        )
-    except Exception as e:
-        logger.warning(f"Base BM25 search failed: {e}")
+    if search_base:
+        try:
+            base_sparse = bm25_manager.search(
+                collection_name=settings.QDRANT_BASE_COLLECTION,
+                query=query,
+                top_k=settings.BM25_TOP_K,
+            )
+        except Exception as e:
+            logger.warning(f"Base BM25 search failed: {e}")
 
     # Step 5: BM25 — user index (if exists)
     user_sparse = []
-    if session_id:
+    if search_user and session_id:
         try:
             user_sparse = bm25_manager.search(
                 collection_name=f"user_{session_id}",

@@ -37,10 +37,18 @@ def create_hierarchical_chunks(
     parent_chunks: list[dict] = []
     child_chunks: list[dict] = []
 
+    # §4 step 5 specifies separators ["\n\n", "\n", ". ", " "]. If none of
+    # those appear in a stretch of text (e.g. a long unbroken ID/URL/base64
+    # blob with no whitespace), RecursiveCharacterTextSplitter has nothing
+    # left to split on and returns the whole span as one oversized chunk —
+    # this is a real edge case caught by tests/test_chunking.py's size-bound
+    # test. Appending "" as the final fallback guarantees a hard character-
+    # count split as a last resort, so no child chunk can ever exceed the
+    # configured size bound, without changing behavior for normal prose.
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.CHILD_CHUNK_SIZE,
         chunk_overlap=settings.CHILD_CHUNK_OVERLAP,
-        separators=settings.CHILD_CHUNK_SEPARATORS,
+        separators=[*settings.CHILD_CHUNK_SEPARATORS, ""],
     )
 
     # Accumulate elements into parent groups

@@ -1,9 +1,26 @@
+import hashlib
 import logging
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _chunk_id_to_point_id(chunk_id: str) -> int:
+    """
+    Deterministically convert a UUID-string chunk_id into a Qdrant-compatible
+    unsigned integer point ID.
+
+    NOTE: Python's built-in hash() is intentionally randomized per-process
+    (PYTHONHASHSEED), so the same chunk_id would map to a different point ID
+    every time the process restarts. That's harmless for the base collection
+    (rebuilt fresh at every startup) but is a correctness footgun in general
+    (e.g. it breaks any future idempotent-upsert-by-id logic). Use a stable,
+    deterministic hash instead.
+    """
+    digest = hashlib.sha256(chunk_id.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=False)
 
 class VectorStoreManager:
     def __init__(self):
@@ -39,7 +56,7 @@ class VectorStoreManager:
         logger.info(f"Upserting {len(chunk_ids)} chunks into {collection_name}")
         points = [
             PointStruct(
-                id=abs(hash(cid)) % (2**63),  # Qdrant needs int IDs
+                id=_chunk_id_to_point_id(cid),  # Qdrant needs int IDs
                 vector=vec,
                 payload=payload,
             )

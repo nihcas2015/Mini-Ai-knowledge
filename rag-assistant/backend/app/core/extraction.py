@@ -4,6 +4,8 @@ import os
 from unstructured.partition.pdf import partition_pdf
 from unstructured.documents.elements import Table
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,7 +70,7 @@ def extract_pdf(file_bytes: bytes, filename: str) -> list[dict]:
             })
             total_text_length += len(text)
             
-        if total_text_length < 200:
+        if total_text_length < settings.MIN_EXTRACTED_TEXT_CHARS:
             logger.warning(f"Extracted only {total_text_length} characters from {filename}")
             raise ValueError("No extractable text found — this PDF may be a scanned image.")
             

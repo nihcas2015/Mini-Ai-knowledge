@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import ChatWindow from '@/components/ChatWindow';
 import UploadPanel from '@/components/UploadPanel';
 import SourceFilterToggle from '@/components/SourceFilterToggle';
-import { createSession, endSession } from '@/lib/api';
+import { createSession, endSession, SourceFilter } from '@/lib/api';
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sourceFilter, setSourceFilter] = useState<'base' | 'user' | 'both'>('both');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('both');
 
   useEffect(() => {
     let activeSession: string | null = null;

@@ -1,13 +1,10 @@
 """
-Upload route.
 POST /upload — upload a PDF to a session's user knowledge layer.
 """
 
 import hashlib
 import logging
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.rate_limit import limiter
 from app.config import settings
@@ -21,13 +18,12 @@ from app.core.bm25_index import get_bm25_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/upload", response_model=UploadResponse)
 @limiter.limit(settings.RATE_LIMIT)
 async def upload_document(
-    http_request: Request,
+    request: Request,
     session_id: str = Form(...),
     file: UploadFile = File(...),
 ):
@@ -47,16 +43,13 @@ async def upload_document(
             chunks_created=0,
             status="rejected",
             reason="Only PDF files are accepted.",
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF files are accepted."
         )
 
     # Read file bytes
     file_bytes = await file.read()
     file_size_mb = len(file_bytes) / (1024 * 1024)
 
-    # Validate file size (§4 step 3)
+    # Validate single file size (§4 step 3)
     if file_size_mb > settings.MAX_FILE_SIZE_MB:
         return UploadResponse(
             session_id=session_id,
@@ -65,14 +58,11 @@ async def upload_document(
             chunks_created=0,
             status="rejected",
             reason=f"File exceeds {settings.MAX_FILE_SIZE_MB} MB limit ({file_size_mb:.1f} MB).",
-        raise HTTPException(
-            status_code=413,
-            detail=f"File exceeds {settings.MAX_FILE_SIZE_MB} MB limit ({file_size_mb:.1f} MB)."
         )
 
     # Validate total upload size per session (§4 step 3)
-    new_total = session.total_upload_bytes + len(file_bytes)
-    if new_total > settings.MAX_TOTAL_UPLOAD_MB * 1024 * 1024:
+    current_total_mb = session.total_upload_bytes / (1024 * 1024)
+    if (current_total_mb + file_size_mb) > settings.MAX_TOTAL_UPLOAD_MB:
         return UploadResponse(
             session_id=session_id,
             filename=file.filename,
@@ -80,9 +70,6 @@ async def upload_document(
             chunks_created=0,
             status="rejected",
             reason=f"Total upload limit of {settings.MAX_TOTAL_UPLOAD_MB} MB per session exceeded.",
-        raise HTTPException(
-            status_code=413,
-            detail=f"Total upload limit of {settings.MAX_TOTAL_UPLOAD_MB} MB per session exceeded."
         )
 
     # Content-hash dedup (§4 step 6)
@@ -95,72 +82,80 @@ async def upload_document(
             chunks_created=0,
             status="rejected",
             reason="This file has already been uploaded in this session.",
-        raise HTTPException(
-            status_code=409,
-            detail="This file has already been uploaded in this session."
         )
 
     try:
-        # Extract PDF (§4 step 1-2)
+        # Step 1: Extract PDF elements (§4 step 1)
         elements = extract_pdf(file_bytes, file.filename)
 
-        # Get unique page numbers for reporting
-        page_numbers = set()
-        for elem in elements:
-            if "page_number" in elem:
-                page_numbers.add(elem["page_number"])
+        # Count unique pages processed
+        pages = set()
+        for el in elements:
+            if "page_number" in el and el["page_number"] is not None:
+                pages.add(el["page_number"])
+        pages_processed = len(pages) if pages else 1
 
-        # Hierarchical chunking (§4 step 5)
+        # Step 2: Create hierarchical chunks (§4 step 5)
         parent_chunks, child_chunks = create_hierarchical_chunks(
-            elements, file.filename, "user"
+            elements=elements,
+            filename=file.filename,
+            source_type="user",
         )
 
         if not child_chunks:
             return UploadResponse(
                 session_id=session_id,
                 filename=file.filename,
-                pages_processed=len(page_numbers),
+                pages_processed=pages_processed,
                 chunks_created=0,
                 status="rejected",
-                reason="No processable content found in the PDF.",
+                reason="No indexable content found in PDF.",
             )
 
-        # Embed child chunks (§4 step 7)
+        # Step 3: Embed child chunks (§4 step 7)
         embedding_service = get_embedding_service()
-        texts = [c["child_text"] for c in child_chunks]
-        embeddings = embedding_service.embed_texts(texts)
+        child_texts = [c["child_text"] for c in child_chunks]
+        embeddings = embedding_service.embed_texts(child_texts)
 
-        # Store in user Qdrant collection (§4 step 8)
-        vs = get_vector_store()
+        # Step 4: Index into session-scoped Qdrant collection (§4 step 8)
+        vector_store = get_vector_store()
+        user_client = vector_store.get_or_create_user_collection(session_id)
         collection_name = f"user_{session_id}"
-        client = vs.get_or_create_user_collection(session_id)
+
         chunk_ids = [c["chunk_id"] for c in child_chunks]
-        vs.upsert_chunks(client, collection_name, chunk_ids, embeddings, child_chunks)
+        vector_store.upsert_chunks(
+            client=user_client,
+            collection_name=collection_name,
+            chunk_ids=chunk_ids,
+            embeddings=embeddings,
+            payloads=child_chunks,
+        )
 
-        # Build/update BM25 index
-        bm25 = get_bm25_manager()
-        bm25.add_to_index(collection_name, child_chunks)
+        # Step 5: Index into session-scoped BM25 (§4 step 8)
+        bm25_manager = get_bm25_manager()
+        bm25_manager.add_to_index(collection_name, child_chunks)
 
-        # Update session state
+        # Step 6: Update session state (§4 step 6)
         session.has_uploaded_docs = True
-        session.total_upload_bytes = new_total
+        session.total_upload_bytes += len(file_bytes)
         session.file_hashes.add(file_hash)
 
         logger.info(
-            f"Upload success: {file.filename} -> {len(child_chunks)} chunks "
-            f"for session {session_id}"
+            f"Uploaded {file.filename}: {pages_processed} pages, "
+            f"{len(child_chunks)} chunks into {collection_name}"
         )
 
         return UploadResponse(
             session_id=session_id,
             filename=file.filename,
-            pages_processed=len(page_numbers),
+            pages_processed=pages_processed,
             chunks_created=len(child_chunks),
             status="success",
         )
 
     except ValueError as e:
-        # Extraction validation errors (e.g., scanned PDF)
+        # e.g., scanned PDF with < 200 chars
+        logger.warning(f"Upload rejected for {file.filename}: {e}")
         return UploadResponse(
             session_id=session_id,
             filename=file.filename,
@@ -168,9 +163,6 @@ async def upload_document(
             chunks_created=0,
             status="rejected",
             reason=str(e),
-        raise HTTPException(
-            status_code=422,
-            detail=str(e)
         )
     except Exception as e:
         logger.error(f"Upload failed for {file.filename}: {e}", exc_info=True)
@@ -178,4 +170,3 @@ async def upload_document(
             status_code=500,
             detail=f"Failed to process PDF: {str(e)}",
         )
-
