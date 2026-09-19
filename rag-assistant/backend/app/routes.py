@@ -13,7 +13,6 @@ from app.rag_chain import (
     get_session_manager,
     parse_pdf_file,
     split_into_hierarchical_chunks,
-    hybrid_retrieve,
     parse_bracket_citations,
 )
 
@@ -105,17 +104,14 @@ async def ask_question(request: Request, payload: AskRequest):
 
     async def sse_event_stream() -> AsyncGenerator[str, None]:
         try:
-            chunks = await hybrid_retrieve(
-                query=payload.question,
-                session_id=payload.session_id,
+            chunks, token_stream = await rag.astream_rag(
+                question=payload.question,
+                session=session,
                 source_filter=payload.source_filter,
-                vector_store=rag.vector_store,
-                bm25=rag.bm25,
-                reranker=rag.reranker,
             )
 
             full_text = ""
-            async for token in rag.astream_rag_answer(payload.question, chunks, session):
+            async for token in token_stream:
                 full_text += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 

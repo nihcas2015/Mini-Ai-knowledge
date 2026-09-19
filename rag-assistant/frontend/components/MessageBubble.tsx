@@ -104,7 +104,6 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           {renderContent()}
 
           {!isUser && !message.isStreaming && (
-            <div className="mt-2 pt-2 border-t border-dark-700/50 flex items-center justify-between">
             <div className="mt-2 pt-2 border-t border-dark-700/50 flex items-center justify-between gap-3">
               <span className="text-[10px] text-slate-500 font-medium">
                 Mini AI Knowledge System • Built by Sachin

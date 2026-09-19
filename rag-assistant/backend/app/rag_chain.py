@@ -11,6 +11,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+from langchain_core.runnables import (
+    RunnablePassthrough,
+    RunnableLambda,
+)
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
@@ -317,7 +321,7 @@ async def hybrid_retrieve(
     return reranked[:settings.RERANK_TOP_N]
 
 
-def get_langchain_chat_model(provider: str = "groq", key: str = ""):
+def get_langchain_chat_model(provider: str, key: str) -> ChatOpenAI:
     if provider == "groq":
         return ChatOpenAI(
             base_url="https://api.groq.com/openai/v1",
@@ -351,6 +355,19 @@ class LangChainRAGPipeline:
         self.bm25 = BM25IndexManager()
         self.reranker = RerankerService()
 
+        candidate_models = []
+        for k in settings.groq_keys:
+            candidate_models.append(get_langchain_chat_model("groq", k))
+        for k in settings.openrouter_keys:
+            candidate_models.append(get_langchain_chat_model("openrouter", k))
+        for k in settings.gemini_keys:
+            candidate_models.append(get_langchain_chat_model("gemini", k))
+
+        if candidate_models:
+            self.llm = candidate_models[0].with_fallbacks(candidate_models[1:]) if len(candidate_models) > 1 else candidate_models[0]
+        else:
+            self.llm = get_langchain_chat_model("groq", "dummy")
+
         self.prompt_template = ChatPromptTemplate.from_messages([
             ("system", SYSTEM_PROMPT),
             ("human", (
@@ -360,36 +377,52 @@ class LangChainRAGPipeline:
             ))
         ])
 
-    def get_llm_candidates(self) -> List[Tuple[str, str]]:
-        candidates = []
-        for k in settings.groq_keys:
-            candidates.append(("groq", k))
-        for k in settings.openrouter_keys:
-            candidates.append(("openrouter", k))
-        for k in settings.gemini_keys:
-            candidates.append(("gemini", k))
-        return candidates
+        self.retriever_runnable = RunnableLambda(self._retrieve_step)
+        self.context_formatter = RunnableLambda(self._format_context)
+        self.history_formatter = RunnableLambda(self._format_history)
 
-    async def astream_rag_answer(
-        self,
-        question: str,
-        chunks: List[Dict[str, Any]],
-        session: SessionState,
-    ) -> AsyncGenerator[str, None]:
-        if chunks:
-            context_parts = []
-            for i, c in enumerate(chunks, 1):
-                fn = c.get("filename", "unknown")
-                p = c.get("page_number", 1)
-                text = c.get("parent_text", c.get("child_text", ""))
-                context_parts.append(f"[{i}] (Source: {fn}, Page {p})\n{text}")
-            context_block = "\n\n".join(context_parts)
-        else:
-            context_block = (
+        self.rag_prep_chain = (
+            RunnablePassthrough.assign(chunks=self.retriever_runnable)
+            .assign(
+                context_block=lambda x: self.context_formatter.invoke(x["chunks"]),
+                history_block=lambda x: self.history_formatter.invoke(x["session"]),
+            )
+        )
+
+        self.generation_chain = (
+            self.prompt_template
+            | self.llm
+            | StrOutputParser()
+        )
+
+        self.full_rag_chain = self.rag_prep_chain | self.generation_chain
+
+    async def _retrieve_step(self, inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
+        sid = inputs.get("session_id") or (inputs["session"].session_id if "session" in inputs else None)
+        return await hybrid_retrieve(
+            query=inputs["question"],
+            session_id=sid,
+            source_filter=inputs.get("source_filter", "both"),
+            vector_store=self.vector_store,
+            bm25=self.bm25,
+            reranker=self.reranker,
+        )
+
+    def _format_context(self, chunks: List[Dict[str, Any]]) -> str:
+        if not chunks:
+            return (
                 "(No matching document passages found. Answer with general knowledge and "
                 "offer to assist with any uploaded documents.)"
             )
+        context_parts = []
+        for i, c in enumerate(chunks, 1):
+            fn = c.get("filename", "unknown")
+            p = c.get("page_number", 1)
+            text = c.get("parent_text", c.get("child_text", ""))
+            context_parts.append(f"[{i}] (Source: {fn}, Page {p})\n{text}")
+        return "\n\n".join(context_parts)
 
+    def _format_history(self, session: SessionState) -> str:
         history_parts = []
         if session.running_summary:
             history_parts.append(f"Prior Conversation Summary: {session.running_summary}")
@@ -397,24 +430,32 @@ class LangChainRAGPipeline:
             history_parts.append("Recent Conversation:")
             for q, a in session.recent_turns:
                 history_parts.append(f"User: {q}\nAssistant: {a}")
-        history_block = "\n".join(history_parts) if history_parts else "(No prior conversation history)"
+        return "\n".join(history_parts) if history_parts else "(No prior conversation history)"
 
-        for provider, key in self.get_llm_candidates():
+    async def astream_rag(
+        self,
+        question: str,
+        session: SessionState,
+        source_filter: str = "both",
+    ) -> Tuple[List[Dict[str, Any]], AsyncGenerator[str, None]]:
+        inputs = {
+            "question": question,
+            "session": session,
+            "session_id": session.session_id,
+            "source_filter": source_filter,
+        }
+        prep_data = await self.rag_prep_chain.ainvoke(inputs)
+        chunks = prep_data["chunks"]
+
+        async def token_stream():
             try:
-                llm = get_langchain_chat_model(provider, key)
-                chain = self.prompt_template | llm | StrOutputParser()
-
-                async for token in chain.astream({
-                    "history_block": history_block,
-                    "context_block": context_block,
-                    "question": question,
-                }):
+                async for token in self.generation_chain.astream(prep_data):
                     yield token
-                return
             except Exception as e:
-                logger.warning(f"Provider {provider} failed: {e}. Trying next provider...")
+                logger.error(f"Generation error: {e}", exc_info=True)
+                yield f"\n\n[Error generating response: {e}]"
 
-        yield "The assistant is temporarily unavailable. Please try again in a moment."
+        return chunks, token_stream()
 
 
 def parse_bracket_citations(answer: str, chunks: List[Dict[str, Any]]) -> List[Citation]:
