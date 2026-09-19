@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? '/api/backend'
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
 
 export async function createSession(): Promise<string> {
   const res = await fetch(`${API_URL}/session`, { method: 'POST' });
