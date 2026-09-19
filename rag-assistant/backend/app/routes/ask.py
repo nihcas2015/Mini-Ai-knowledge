@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.rate_limit import limiter
 from app.config import settings
 from app.models.schemas import AskRequest, AskResponse, Citation
 from app.core.memory import get_session_manager

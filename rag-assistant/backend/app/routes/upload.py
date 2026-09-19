@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.rate_limit import limiter
 from app.config import settings
 from app.models.schemas import UploadResponse
 from app.core.memory import get_session_manager
@@ -39,6 +40,13 @@ async def upload_document(
 
     # Validate file type
     if not file.filename or not file.filename.lower().endswith(".pdf"):
+        return UploadResponse(
+            session_id=session_id,
+            filename=file.filename or "unknown",
+            pages_processed=0,
+            chunks_created=0,
+            status="rejected",
+            reason="Only PDF files are accepted.",
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are accepted."
@@ -50,6 +58,13 @@ async def upload_document(
 
     # Validate file size (§4 step 3)
     if file_size_mb > settings.MAX_FILE_SIZE_MB:
+        return UploadResponse(
+            session_id=session_id,
+            filename=file.filename,
+            pages_processed=0,
+            chunks_created=0,
+            status="rejected",
+            reason=f"File exceeds {settings.MAX_FILE_SIZE_MB} MB limit ({file_size_mb:.1f} MB).",
         raise HTTPException(
             status_code=413,
             detail=f"File exceeds {settings.MAX_FILE_SIZE_MB} MB limit ({file_size_mb:.1f} MB)."
@@ -58,6 +73,13 @@ async def upload_document(
     # Validate total upload size per session (§4 step 3)
     new_total = session.total_upload_bytes + len(file_bytes)
     if new_total > settings.MAX_TOTAL_UPLOAD_MB * 1024 * 1024:
+        return UploadResponse(
+            session_id=session_id,
+            filename=file.filename,
+            pages_processed=0,
+            chunks_created=0,
+            status="rejected",
+            reason=f"Total upload limit of {settings.MAX_TOTAL_UPLOAD_MB} MB per session exceeded.",
         raise HTTPException(
             status_code=413,
             detail=f"Total upload limit of {settings.MAX_TOTAL_UPLOAD_MB} MB per session exceeded."
@@ -66,6 +88,13 @@ async def upload_document(
     # Content-hash dedup (§4 step 6)
     file_hash = hashlib.sha256(file_bytes).hexdigest()
     if file_hash in session.file_hashes:
+        return UploadResponse(
+            session_id=session_id,
+            filename=file.filename,
+            pages_processed=0,
+            chunks_created=0,
+            status="rejected",
+            reason="This file has already been uploaded in this session.",
         raise HTTPException(
             status_code=409,
             detail="This file has already been uploaded in this session."
@@ -139,6 +168,9 @@ async def upload_document(
             chunks_created=0,
             status="rejected",
             reason=str(e),
+        raise HTTPException(
+            status_code=422,
+            detail=str(e)
         )
     except Exception as e:
         logger.error(f"Upload failed for {file.filename}: {e}", exc_info=True)

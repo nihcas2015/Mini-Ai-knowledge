@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import { askQuestion } from '@/lib/api';
+import { askQuestion, Citation } from '@/lib/api';
 
 interface Citation {
   marker: string;

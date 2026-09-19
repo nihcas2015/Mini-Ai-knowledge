@@ -38,8 +38,10 @@ export default function UploadPanel({ sessionId }: { sessionId: string }) {
           : f
       ));
     } catch (err) {
+    } catch (err: any) {
       setFiles(prev => prev.map(f => 
         f.name === file.name ? { ...f, status: 'error', error: 'Upload failed' } : f
+        f.name === file.name ? { ...f, status: 'error', error: err.message || 'Upload failed' } : f
       ));
     }
   };

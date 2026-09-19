@@ -2,6 +2,7 @@
 
 import React from 'react';
 import CitationBadge from './CitationBadge';
+import { Citation, AskResult } from '@/lib/api';
 
 interface Citation {
   marker: string;
@@ -12,6 +13,7 @@ interface Citation {
 }
 
 interface Message {
+export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -33,8 +35,11 @@ export default function MessageBubble({ message }: { message: Message }) {
       if (match && message.citations) {
         const marker = match[0];
         const citation = message.citations.find(c => c.marker === marker || c.marker === match[1]);
+        const markerNum = parseInt(match[1], 10);
+        const citation = message.citations.find(c => c.marker === markerNum);
         if (citation) {
           return <CitationBadge key={index} citation={citation} marker={marker} />;
+          return <CitationBadge key={index} citation={citation} marker={`[${markerNum}]`} />;
         }
       }
       return <span key={index}>{part}</span>;

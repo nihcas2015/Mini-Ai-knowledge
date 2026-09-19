@@ -9,6 +9,7 @@ interface Citation {
   source_type: string;
   snippet: string;
 }
+import { Citation } from '@/lib/api';
 
 export default function CitationBadge({ citation, marker }: { citation: Citation; marker: string }) {
   const [showPopover, setShowPopover] = useState(false);

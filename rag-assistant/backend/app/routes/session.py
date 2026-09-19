@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.rate_limit import limiter
 from app.config import settings
 from app.core.memory import get_session_manager
 from app.core.vector_store import get_vector_store

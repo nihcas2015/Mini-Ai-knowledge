@@ -16,6 +16,7 @@ export async function uploadDocument(sessionId: string, file: File) {
     method: 'POST',
     body: formData,
   });
+  if (!res.ok) throw new Error('Failed to upload document');
   if (!res.ok) {
     let errorMessage = 'Failed to upload document';
     try {
