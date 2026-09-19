@@ -30,25 +30,37 @@ def init_base_knowledge_worker():
         rag = get_rag_pipeline()
         rag.vector_store.init_base_collection()
 
-        # Fast path: check if Qdrant Cloud base collection already has points
+        # 1. Fetch all existing chunks & document filenames from Qdrant Cloud
+        existing_chunks = []
+        existing_filenames = set()
         try:
-            col = rag.vector_store.base_client.get_collection(settings.QDRANT_BASE_COLLECTION)
-            if col.points_count and col.points_count > 0:
-                logger.info(f"Base collection already exists with {col.points_count} points in Qdrant Cloud. Loading BM25 index from stored payloads...")
-                records, _ = rag.vector_store.base_client.scroll(
+            offset = None
+            while True:
+                records, next_offset = rag.vector_store.base_client.scroll(
                     collection_name=settings.QDRANT_BASE_COLLECTION,
-                    limit=10000,
+                    limit=1000,
+                    offset=offset,
                     with_payload=True,
                     with_vectors=False,
                 )
-                chunks = [r.payload for r in records if r.payload]
-                if chunks:
-                    rag.bm25.build_index(settings.QDRANT_BASE_COLLECTION, chunks)
-                    logger.info(f"Base knowledge ready: {len(chunks)} chunks loaded into BM25 index.")
-                    return
-        except Exception as check_err:
-            logger.warning(f"Could not verify existing collection points: {check_err}. Proceeding with file indexing...")
+                for r in records:
+                    if r.payload:
+                        existing_chunks.append(r.payload)
+                        fn = r.payload.get("filename")
+                        if fn:
+                            existing_filenames.add(fn)
+                if not next_offset:
+                    break
+                offset = next_offset
 
+            logger.info(f"Qdrant Cloud has {len(existing_chunks)} existing chunks covering: {list(existing_filenames)}")
+            if existing_chunks:
+                rag.bm25.build_index(settings.QDRANT_BASE_COLLECTION, existing_chunks)
+                logger.info(f"Initial base knowledge ready: {len(existing_chunks)} chunks in BM25 index.")
+        except Exception as e:
+            logger.warning(f"Could not read existing Qdrant points: {e}")
+
+        # 2. Check knowledge base directory for any unindexed files
         kb_dir = settings.KNOWLEDGE_BASE_DIR
         if not os.path.isabs(kb_dir):
             kb_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), kb_dir)
@@ -58,13 +70,15 @@ def init_base_knowledge_worker():
             return
 
         files = [f for f in os.listdir(kb_dir) if f.lower().endswith((".pdf", ".txt", ".md"))]
-        if not files:
-            logger.info("No base documents found in knowledge_base/. Starting with empty base.")
-            return
+        new_chunks = []
 
-        all_child_chunks = []
         for f in files:
+            if f in existing_filenames:
+                logger.info(f"Document '{f}' is already indexed in Qdrant Cloud. Skipping.")
+                continue
+
             file_path = os.path.join(kb_dir, f)
+            logger.info(f"Indexing missing base document: {f}...")
             try:
                 if f.lower().endswith(".pdf"):
                     with open(file_path, "rb") as pdf_f:
@@ -80,14 +94,15 @@ def init_base_knowledge_worker():
 
                 _, children = split_into_hierarchical_chunks(docs, f, source_type="base")
                 rag.vector_store.upsert_chunks(rag.vector_store.base_client, settings.QDRANT_BASE_COLLECTION, children)
-                all_child_chunks.extend(children)
-                logger.info(f"Indexed base document {f}: {len(children)} chunks")
+                new_chunks.extend(children)
+                logger.info(f"Successfully indexed {f}: {len(children)} chunks into Qdrant Cloud")
             except Exception as e:
                 logger.error(f"Failed to index {f}: {e}")
 
-        if all_child_chunks:
-            rag.bm25.build_index(settings.QDRANT_BASE_COLLECTION, all_child_chunks)
-            logger.info(f"Base knowledge ready: {len(all_child_chunks)} chunks indexed")
+        if new_chunks:
+            all_chunks = existing_chunks + new_chunks
+            rag.bm25.build_index(settings.QDRANT_BASE_COLLECTION, all_chunks)
+            logger.info(f"Base knowledge fully updated: {len(all_chunks)} total chunks indexed.")
 
     except Exception as e:
         logger.error(f"Base knowledge indexing failed: {e}", exc_info=True)
