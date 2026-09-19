@@ -20,39 +20,50 @@ An advanced, intelligent document-powered RAG assistant built with pure LangChai
 
 ---
 
-## Architecture & Methodology
+## Project Structure
 
-```mermaid
-flowchart LR
-    subgraph Frontend["Next.js Frontend (Vercel)"]
-        UI["Chat UI + Upload Panel<br/>SSE Streaming & Citations"]
-    end
-    
-    subgraph Backend["FastAPI + LangChain LCEL (AWS EC2)"]
-        direction TB
-        Routes["API Routes<br/>/health /session /upload /ask"]
-        LCEL["LangChain LCEL Pipeline<br/>rag_prep_chain | generation_chain"]
-        Retrieval["Hybrid Retrieval<br/>Dense (0.6) + BM25 (0.4)"]
-        Rerank["Neural Reranker<br/>Cohere (fallback: FlashRank)"]
-        LLM["Declarative LLM Chain<br/>Groq .with_fallbacks([OpenRouter, Gemini])"]
-    end
-    
-    subgraph Storage["Storage Layer"]
-        QCloud["Qdrant Cloud<br/>base_knowledge"]
-        QMem["In-Memory Qdrant<br/>user_{session_id}"]
-        BM25["BM25 Okapi Index"]
-    end
-    
-    UI -->|"SSE / REST"| Routes
-    Routes --> LCEL
-    LCEL --> Retrieval
-    Retrieval --> QCloud
-    Retrieval --> QMem
-    Retrieval --> BM25
-    Retrieval --> Rerank
-    Rerank --> LLM
-    LLM -->|"Tokens"| UI
 ```
+Mini Ai knowledge/
+└── rag-assistant/
+    ├── backend/
+    │   ├── app/
+    │   │   ├── __init__.py
+    │   │   ├── config.py         # Application settings & API key rotation properties
+    │   │   ├── main.py           # FastAPI entry point, CORS & background base indexing
+    │   │   ├── models.py         # Pydantic schemas (AskRequest, UploadResponse, Citation, SessionState)
+    │   │   ├── rag_chain.py      # Pure LangChain LCEL RAG engine, vector store & reranker
+    │   │   └── routes.py         # API endpoints (/health, /session, /upload, /ask)
+    │   ├── knowledge_base/       # Curated base knowledge documents
+    │   │   ├── Building_Wealth_Personal_Finance.pdf
+    │   │   ├── Constitution_of_India.pdf
+    │   │   ├── Health_and_Physical_Wellness_Guidelines.pdf
+    │   │   ├── India_Economic_Survey_Overview.pdf
+    │   │   ├── Think_Python.pdf
+    │   │   └── UN_Climate_Change_Report_Summary.pdf
+    │   ├── .env                  # API keys & configuration (git-ignored)
+    │   └── requirements.txt      # Production Python dependencies
+    └── frontend/
+        ├── app/
+        │   ├── globals.css       # Global styles & custom scrollbars
+        │   ├── layout.tsx        # Branded root layout & metadata
+        │   └── page.tsx          # Main dashboard & responsive sidebar layout
+        ├── components/
+        │   ├── ChatWindow.tsx    # Streaming chat container
+        │   ├── CitationBadge.tsx # Interactive source citation popovers
+        │   ├── MessageBubble.tsx # Formatted message bubbles (Grounded vs. LLM Reply)
+        │   ├── ParticleBackground.tsx # Interactive canvas particle system
+        │   ├── SourceFilterToggle.tsx # Source toggle (Base / My Docs / Both)
+        │   └── UploadPanel.tsx   # PDF dropzone & progress bar
+        ├── lib/
+        │   └── api.ts            # Client API requests & SSE stream parser
+        ├── next.config.js        # Next.js API proxy rewrites
+        ├── package.json          # Node dependencies & scripts
+        └── tailwind.config.ts    # Custom dark theme configuration
+```
+
+---
+
+## Knowledge & Retrieval Design
 
 ### Two Knowledge Layers
 1. **Base Knowledge Layer**: Pre-indexed documents permanently stored in Qdrant Cloud. Available to all users across all sessions.
