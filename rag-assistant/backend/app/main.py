@@ -1,3 +1,4 @@
+import asyncio
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -73,7 +74,7 @@ async def index_base_knowledge():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await index_base_knowledge()
+    asyncio.create_task(index_base_knowledge())
     yield
 
 
