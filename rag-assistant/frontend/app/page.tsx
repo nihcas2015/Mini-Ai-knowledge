@@ -12,33 +12,61 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('both');
 
+  const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+
+  const initSession = async () => {
+    try {
+      setError(null);
+      setRetrying(true);
+      const id = await createSession();
+      setSessionId(id);
+    } catch (err: any) {
+      console.error('Failed to create session', err);
+      setError(err?.message || 'Could not connect to the backend server.');
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   useEffect(() => {
-    let activeSession: string | null = null;
-    const initSession = async () => {
-      try {
-        const id = await createSession();
-        setSessionId(id);
-        activeSession = id;
-      } catch (err) {
-        console.error('Failed to create session', err);
-      }
-    };
     initSession();
 
     return () => {
-      if (activeSession) {
-        endSession(activeSession).catch(() => {});
+      if (sessionId) {
+        endSession(sessionId).catch(() => {});
       }
     };
   }, []);
 
   if (!sessionId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-950">
+      <div className="min-h-screen flex items-center justify-center bg-dark-950 p-4">
         <ParticleBackground />
-        <div className="relative z-10 flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <p className="text-slate-400 text-sm">Initializing session...</p>
+        <div className="relative z-10 flex flex-col items-center gap-4 max-w-md text-center">
+          {error ? (
+            <div className="bg-dark-900/90 border border-red-500/30 rounded-2xl p-6 backdrop-blur shadow-2xl flex flex-col items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-400 flex items-center justify-center text-xl font-bold">
+                !
+              </div>
+              <div>
+                <h2 className="text-white font-semibold mb-1">Connection Failed</h2>
+                <p className="text-slate-400 text-xs leading-relaxed">{error}</p>
+              </div>
+              <button
+                onClick={initSession}
+                disabled={retrying}
+                className="px-5 py-2 bg-accent hover:bg-accent-dark text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-accent/25 disabled:opacity-50"
+              >
+                {retrying ? 'Retrying...' : 'Retry Connection'}
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              <p className="text-slate-400 text-sm">Initializing session...</p>
+            </>
+          )}
         </div>
       </div>
     );

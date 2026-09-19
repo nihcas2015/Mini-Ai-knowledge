@@ -1,10 +1,17 @@
-const API_URL = typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? '/api/backend'
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+/**
+ * Frontend API client with Next.js proxy support to prevent HTTPS Mixed-Content blocking.
+ */
+
+function getApiUrl(): string {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    return '/api/backend';
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://65.2.69.137:8000';
+}
 
 export async function createSession(): Promise<string> {
-  const res = await fetch(`${API_URL}/session`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to create session');
+  const res = await fetch(`${getApiUrl()}/session`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to create session: ${res.statusText}`);
   const data = await res.json();
   return data.session_id;
 }
@@ -14,7 +21,7 @@ export async function uploadDocument(sessionId: string, file: File) {
   formData.append('session_id', sessionId);
   formData.append('file', file);
 
-  const res = await fetch(`${API_URL}/upload`, {
+  const res = await fetch(`${getApiUrl()}/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -32,7 +39,7 @@ export async function uploadDocument(sessionId: string, file: File) {
 }
 
 export async function clearDocuments(sessionId: string) {
-  const res = await fetch(`${API_URL}/session/${sessionId}/documents`, {
+  const res = await fetch(`${getApiUrl()}/session/${sessionId}/documents`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to clear documents');
@@ -40,7 +47,7 @@ export async function clearDocuments(sessionId: string) {
 }
 
 export async function endSession(sessionId: string) {
-  const res = await fetch(`${API_URL}/session/${sessionId}`, {
+  const res = await fetch(`${getApiUrl()}/session/${sessionId}`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to end session');
@@ -61,14 +68,6 @@ export interface AskResult {
   provider_used: string;
 }
 
-/**
- * Ask a question via SSE stream.
- * Backend sends:
- *   data: {"type":"token","content":"..."}
- *   data: {"type":"final","data":{"answer":"...","citations":[...],"provider_used":"..."}}
- *   data: {"type":"error","content":"..."}
- *   data: [DONE]
- */
 export type SourceFilter = 'base' | 'user' | 'both';
 
 export async function askQuestion(
@@ -80,7 +79,7 @@ export async function askQuestion(
   onError: (error: Error) => void
 ) {
   try {
-    const res = await fetch(`${API_URL}/ask`, {
+    const res = await fetch(`${getApiUrl()}/ask`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
