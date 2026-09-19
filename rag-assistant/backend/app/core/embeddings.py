@@ -1,29 +1,26 @@
 import logging
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 class EmbeddingService:
     def __init__(self):
-        logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
-        self.model = SentenceTransformer(settings.EMBEDDING_MODEL)
-        
+        logger.info(f"Loading fastembed model: {settings.EMBEDDING_MODEL}")
+        self.model = TextEmbedding(model_name=settings.EMBEDDING_MODEL)
+        logger.info("Embedding model loaded successfully")
+
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        logger.debug(f"Embedding {len(texts)} texts")
-        embeddings = self.model.encode(texts, batch_size=32, normalize_embeddings=True)
-        return [embedding.tolist() for embedding in embeddings]
-        
+        embeddings = list(self.model.embed(texts, batch_size=settings.EMBEDDING_BATCH_SIZE))
+        return [e.tolist() for e in embeddings]
+
     def embed_query(self, query: str) -> list[float]:
-        logger.debug("Embedding query")
-        embedding = self.model.encode(query, normalize_embeddings=True)
-        return embedding.tolist()
+        embeddings = list(self.model.embed([query]))
+        return embeddings[0].tolist()
 
-_embedding_service = None
-
+_instance = None
 def get_embedding_service() -> EmbeddingService:
-    """Singleton pattern to get the EmbeddingService instance."""
-    global _embedding_service
-    if _embedding_service is None:
-        _embedding_service = EmbeddingService()
-    return _embedding_service
+    global _instance
+    if _instance is None:
+        _instance = EmbeddingService()
+    return _instance

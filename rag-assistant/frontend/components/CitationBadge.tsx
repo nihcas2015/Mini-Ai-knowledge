@@ -1,42 +1,50 @@
 'use client';
 
-import { useState } from 'react';
-import { FileText } from 'lucide-react';
 import { Citation } from '@/lib/api';
+import { FileText, Database } from 'lucide-react';
 
-export default function CitationBadge({ citation, marker }: { citation: Citation; marker: string }) {
-  const [showPopover, setShowPopover] = useState(false);
+interface CitationBadgeProps {
+  citation: Citation;
+}
 
+export default function CitationBadge({ citation }: CitationBadgeProps) {
   return (
-    <span className="relative inline-block mx-1">
-      <button
-        onMouseEnter={() => setShowPopover(true)}
-        onMouseLeave={() => setShowPopover(false)}
-        className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
-      >
-        {marker.replace(/[\[\]]/g, '')}
-      </button>
+    <span className="relative group inline-block mx-1">
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent text-[10px] font-bold text-white cursor-pointer hover:bg-accent-light transition-colors shadow-sm">
+        {citation.marker}
+      </span>
 
-      {showPopover && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 text-white text-sm rounded-lg shadow-xl z-50 animate-in fade-in zoom-in duration-200">
-          <div className="flex items-start gap-2 mb-2 border-b border-slate-600 pb-2">
-            <FileText className="w-4 h-4 text-slate-300 mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium truncate" title={citation.filename}>
-                {citation.filename}
-              </div>
-              <div className="text-xs text-slate-400 flex justify-between">
-                <span>Page {citation.page_number}</span>
-                <span className="capitalize">{citation.source_type}</span>
-              </div>
-            </div>
+      {/* Popover */}
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 rounded-lg bg-dark-800/95 backdrop-blur border border-dark-600 shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all duration-200 z-50 origin-bottom scale-95 group-hover:scale-100">
+        <div className="flex items-center justify-between mb-2 pb-2 border-b border-dark-700/50">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <FileText className="w-3 h-3 text-slate-400 shrink-0" />
+            <span className="text-xs font-medium text-slate-200 truncate" title={citation.filename}>
+              {citation.filename}
+            </span>
           </div>
-          <div className="text-slate-300 text-xs italic line-clamp-4">
-            "{citation.snippet}"
-          </div>
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45" />
+          {citation.source_type === 'base' ? (
+            <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-400 shrink-0 bg-dark-900 px-1.5 py-0.5 rounded">
+              <Database className="w-3 h-3" /> Base
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent shrink-0 bg-accent/10 px-1.5 py-0.5 rounded">
+              <FileText className="w-3 h-3" /> User
+            </span>
+          )}
         </div>
-      )}
+        <div className="text-xs text-slate-300 leading-relaxed max-h-32 overflow-y-auto custom-scrollbar">
+          &ldquo;{citation.snippet}&rdquo;
+        </div>
+        {citation.page_number && (
+          <div className="mt-2 text-[10px] text-slate-500 text-right">
+            Page {citation.page_number}
+          </div>
+        )}
+        
+        {/* Triangle pointer */}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-dark-600" />
+      </span>
     </span>
   );
 }

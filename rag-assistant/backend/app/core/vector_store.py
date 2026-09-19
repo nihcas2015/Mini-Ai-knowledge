@@ -8,90 +8,85 @@ logger = logging.getLogger(__name__)
 
 
 def _chunk_id_to_point_id(chunk_id: str) -> int:
-    """
-    Deterministically convert a UUID-string chunk_id into a Qdrant-compatible
-    unsigned integer point ID.
-
-    NOTE: Python's built-in hash() is intentionally randomized per-process
-    (PYTHONHASHSEED), so the same chunk_id would map to a different point ID
-    every time the process restarts. That's harmless for the base collection
-    (rebuilt fresh at every startup) but is a correctness footgun in general
-    (e.g. it breaks any future idempotent-upsert-by-id logic). Use a stable,
-    deterministic hash instead.
-    """
     digest = hashlib.sha256(chunk_id.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], byteorder="big", signed=False)
 
+
 class VectorStoreManager:
     def __init__(self):
-        logger.info(f"Initializing base Qdrant client at {settings.QDRANT_BASE_PATH}")
-        self.base_client = QdrantClient(path=settings.QDRANT_BASE_PATH)
-        self.user_clients: dict[str, QdrantClient] = {}
-        
-    def init_base_collection(self, dimension: int = 768):
-        collection_name = 'base_knowledge'
-        try:
-            self.base_client.recreate_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=dimension, distance=Distance.COSINE)
+        # Base collection lives in Qdrant Cloud
+        if settings.QDRANT_CLOUD_URL and settings.QDRANT_CLOUD_API_KEY:
+            logger.info(f"Connecting to Qdrant Cloud: {settings.QDRANT_CLOUD_URL}")
+            self.base_client = QdrantClient(
+                url=settings.QDRANT_CLOUD_URL,
+                api_key=settings.QDRANT_CLOUD_API_KEY,
             )
-            logger.info(f"Recreated base collection: {collection_name}")
-        except Exception as e:
-            logger.error(f"Error initializing base collection: {e}")
-            raise
-            
+        else:
+            logger.info(f"Using local Qdrant at {settings.QDRANT_BASE_PATH}")
+            self.base_client = QdrantClient(path=settings.QDRANT_BASE_PATH)
+
+        self.user_clients: dict[str, QdrantClient] = {}
+
+    def init_base_collection(self, dimension: int = 768):
+        collections = self.base_client.get_collections().collections
+        exists = any(c.name == settings.QDRANT_BASE_COLLECTION for c in collections)
+        if not exists:
+            self.base_client.create_collection(
+                collection_name=settings.QDRANT_BASE_COLLECTION,
+                vectors_config=VectorParams(size=dimension, distance=Distance.COSINE),
+            )
+            logger.info(f"Created base collection: {settings.QDRANT_BASE_COLLECTION}")
+        else:
+            logger.info(f"Base collection already exists: {settings.QDRANT_BASE_COLLECTION}")
+
     def get_or_create_user_collection(self, session_id: str, dimension: int = 768) -> QdrantClient:
-        collection_name = f'user_{session_id}'
         if session_id not in self.user_clients:
-            logger.info(f"Creating in-memory Qdrant client for session {session_id}")
-            client = QdrantClient(location=':memory:')
-            client.recreate_collection(
+            client = QdrantClient(location=":memory:")
+            collection_name = f"user_{session_id}"
+            client.create_collection(
                 collection_name=collection_name,
-                vectors_config=VectorParams(size=dimension, distance=Distance.COSINE)
+                vectors_config=VectorParams(size=dimension, distance=Distance.COSINE),
             )
             self.user_clients[session_id] = client
+            logger.info(f"Created user collection: {collection_name}")
         return self.user_clients[session_id]
-        
-    def upsert_chunks(self, client: QdrantClient, collection_name: str, chunk_ids: list[str], embeddings: list[list[float]], payloads: list[dict]):
+
+    def upsert_chunks(self, client, collection_name, chunk_ids, embeddings, payloads):
         logger.info(f"Upserting {len(chunk_ids)} chunks into {collection_name}")
         points = [
             PointStruct(
-                id=_chunk_id_to_point_id(cid),  # Qdrant needs int IDs
+                id=_chunk_id_to_point_id(cid),
                 vector=vec,
                 payload=payload,
             )
             for cid, vec, payload in zip(chunk_ids, embeddings, payloads)
         ]
         client.upsert(collection_name=collection_name, points=points)
-        
-    def search(self, client: QdrantClient, collection_name: str, query_vector: list[float], top_k: int = 20) -> list[dict]:
-        logger.debug(f"Searching {collection_name} for top {top_k} results")
-        results = client.search(
+
+    def search(self, client, collection_name, query_vector, top_k=20):
+        results = client.query_points(
             collection_name=collection_name,
-            query_vector=query_vector,
-            limit=top_k
-        )
-        # Return payload dicts with score attached
-        output = []
-        for hit in results:
-            item = dict(hit.payload) if hit.payload else {}
-            item["score"] = hit.score
-            output.append(item)
-        return output
-        
+            query=query_vector,
+            limit=top_k,
+            with_payload=True,
+        ).points
+        return [
+            {**point.payload, "score": point.score}
+            for point in results
+        ]
+
     def delete_user_collection(self, session_id: str):
         if session_id in self.user_clients:
-            logger.info(f"Deleting user collection for session {session_id}")
             del self.user_clients[session_id]
-            
+            logger.info(f"Deleted user collection for session {session_id}")
+
     def has_user_collection(self, session_id: str) -> bool:
         return session_id in self.user_clients
 
-_vector_store_manager = None
 
+_instance = None
 def get_vector_store() -> VectorStoreManager:
-    """Singleton pattern to get the VectorStoreManager instance."""
-    global _vector_store_manager
-    if _vector_store_manager is None:
-        _vector_store_manager = VectorStoreManager()
-    return _vector_store_manager
+    global _instance
+    if _instance is None:
+        _instance = VectorStoreManager()
+    return _instance

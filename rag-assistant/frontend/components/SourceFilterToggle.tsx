@@ -1,27 +1,33 @@
 'use client';
 
-type FilterType = 'base' | 'user' | 'both';
+import { SourceFilter } from '@/lib/api';
 
-export default function SourceFilterToggle({ 
-  value, 
-  onChange 
-}: { 
-  value: FilterType; 
-  onChange: (val: FilterType) => void;
+const options: { value: SourceFilter; label: string }[] = [
+  { value: 'base', label: 'Base' },
+  { value: 'both', label: 'Both' },
+  { value: 'user', label: 'My Docs' },
+];
+
+export default function SourceFilterToggle({
+  value,
+  onChange,
+}: {
+  value: SourceFilter;
+  onChange: (v: SourceFilter) => void;
 }) {
   return (
-    <div className="flex p-1 bg-slate-200/60 rounded-lg w-full">
-      {(['base', 'both', 'user'] as FilterType[]).map((type) => (
+    <div className="flex rounded-lg bg-dark-800 p-1 gap-1">
+      {options.map((opt) => (
         <button
-          key={type}
-          onClick={() => onChange(type)}
-          className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md capitalize transition-all
-            ${value === type 
-              ? 'bg-white text-slate-900 shadow-sm' 
-              : 'text-slate-500 hover:text-slate-700'
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200
+            ${value === opt.value
+              ? 'bg-accent text-white shadow-lg shadow-accent/20'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-dark-700'
             }`}
         >
-          {type}
+          {opt.label}
         </button>
       ))}
     </div>

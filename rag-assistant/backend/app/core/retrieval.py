@@ -1,14 +1,6 @@
-"""
-Hybrid retrieval pipeline: dense + BM25, ensemble merging, Cohere reranking,
-and relevance threshold check. Exact implementation per SPEC.md §5.
-"""
-
-import asyncio
 import logging
-
-import cohere
-
 from app.config import settings
+from app.core.reranker import get_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +14,14 @@ async def retrieve(
     source_filter: str = "both",
 ) -> list[dict]:
     """
-    Full hybrid retrieval pipeline (§5):
+    Full hybrid retrieval pipeline:
     1. Embed query
-    2-3. Dense search on base + user collections
-    4-5. BM25 search on base + user indices
-    6. Ensemble merge (0.6 dense / 0.4 sparse), dedupe, cap at 30
-    7. Cohere rerank (with fallback to ensemble order)
+    2-3. Dense search (base + user)
+    4-5. BM25 search (base + user)
+    6. Ensemble merge (0.6 dense + 0.4 sparse)
+    7. Rerank with flashrank
     8. Relevance threshold check
     9. Return top-5 chunks
-
-    source_filter: "base" (search only base knowledge), "user" (search only
-    this session's uploaded docs), or "both" (default — search everything).
-    Powers the frontend's "base only / my docs only / both" toggle.
     """
     search_base = source_filter in ("base", "both")
     search_user = source_filter in ("user", "both")
@@ -54,7 +42,7 @@ async def retrieve(
         except Exception as e:
             logger.warning(f"Base dense search failed: {e}")
 
-    # Step 3: Dense retrieval — user collection (if exists)
+    # Step 3: Dense retrieval — user collection
     user_dense = []
     if search_user and session_id and vector_store.has_user_collection(session_id):
         try:
@@ -80,7 +68,7 @@ async def retrieve(
         except Exception as e:
             logger.warning(f"Base BM25 search failed: {e}")
 
-    # Step 5: BM25 — user index (if exists)
+    # Step 5: BM25 — user index
     user_sparse = []
     if search_user and session_id:
         try:
@@ -90,83 +78,50 @@ async def retrieve(
                 top_k=settings.BM25_TOP_K,
             )
         except Exception as e:
-            logger.debug(f"User BM25 search returned nothing: {e}")
+            logger.warning(f"User BM25 search failed: {e}")
 
-    # Step 6: Ensemble merge — dedupe by chunk_id, weighted scoring
-    combined_scores: dict[str, float] = {}
-    chunk_map: dict[str, dict] = {}
+    # Step 6: Ensemble merge
+    scored: dict[str, dict] = {}
 
-    # Dense results (weight 0.6)
-    for r in base_dense + user_dense:
-        cid = r.get("chunk_id", "")
-        if not cid:
-            continue
-        chunk_map[cid] = r
-        score = r.get("score", 0.5)
-        combined_scores[cid] = combined_scores.get(cid, 0) + score * settings.ENSEMBLE_DENSE_WEIGHT
+    for chunk in base_dense + user_dense:
+        cid = chunk.get("chunk_id", "")
+        score = chunk.get("score", 0.0) * settings.ENSEMBLE_DENSE_WEIGHT
+        if cid in scored:
+            scored[cid]["ensemble_score"] += score
+        else:
+            scored[cid] = {**chunk, "ensemble_score": score}
 
-    # Sparse results (weight 0.4)
-    for r in base_sparse + user_sparse:
-        cid = r.get("chunk_id", "")
-        if not cid:
-            continue
-        if cid not in chunk_map:
-            chunk_map[cid] = r
-        score = r.get("score", 0.5)
-        combined_scores[cid] = combined_scores.get(cid, 0) + score * settings.ENSEMBLE_SPARSE_WEIGHT
+    for chunk in base_sparse + user_sparse:
+        cid = chunk.get("chunk_id", "")
+        score = chunk.get("score", 0.0) * settings.ENSEMBLE_SPARSE_WEIGHT
+        if cid in scored:
+            scored[cid]["ensemble_score"] += score
+        else:
+            scored[cid] = {**chunk, "ensemble_score": score}
 
-    # Sort by combined score, cap at 30
-    merged = sorted(
-        [
-            {**chunk_map[cid], "chunk_id": cid, "score": score}
-            for cid, score in combined_scores.items()
-        ],
-        key=lambda x: x["score"],
-        reverse=True,
-    )[: settings.RERANK_CANDIDATES_CAP]
+    # Sort by ensemble score, cap at 30
+    candidates = sorted(scored.values(), key=lambda x: x["ensemble_score"], reverse=True)
+    candidates = candidates[:settings.RERANK_CANDIDATES_CAP]
 
-    if not merged:
+    if not candidates:
         return []
 
-    # Step 7: Cohere rerank (with fallback)
-    reranked_chunks = []
+    # Step 7: Rerank with flashrank
     try:
-        co = cohere.Client(api_key=settings.COHERE_API_KEY)
-        docs = [m.get("parent_text", m.get("child_text", "")) for m in merged]
-
-        rerank_response = await asyncio.wait_for(
-            asyncio.to_thread(
-                co.rerank,
-                query=query,
-                documents=docs,
-                model=settings.COHERE_RERANK_MODEL,
-                top_n=settings.RERANK_TOP_N,
-            ),
-            timeout=settings.RERANK_TIMEOUT,
+        reranker = get_reranker()
+        reranked = reranker.rerank(
+            query=query,
+            documents=candidates,
+            top_n=settings.RERANK_TOP_N,
         )
-
-        for res in rerank_response.results:
-            chunk = merged[res.index].copy()
-            chunk["relevance_score"] = res.relevance_score
-            reranked_chunks.append(chunk)
-
+        logger.info(f"Reranked {len(candidates)} candidates to {len(reranked)} results")
     except Exception as e:
-        logger.warning(f"Cohere reranking failed, falling back to ensemble order: {e}")
-        reranked_chunks = merged[: settings.RERANK_TOP_N]
-        for c in reranked_chunks:
-            c["relevance_score"] = c.get("score", 0)
+        logger.warning(f"Reranking failed, using ensemble order: {e}")
+        reranked = candidates[:settings.RERANK_TOP_N]
 
-    # Step 8: Relevance threshold check
-    if not reranked_chunks:
+    # Step 8: Relevance threshold
+    if reranked and reranked[0].get("rerank_score", reranked[0].get("ensemble_score", 0)) < settings.RELEVANCE_THRESHOLD:
+        logger.info("Top result below relevance threshold, returning empty")
         return []
 
-    top_score = reranked_chunks[0].get("relevance_score", 0)
-    if top_score < settings.RELEVANCE_THRESHOLD:
-        logger.info(
-            f"Top relevance score {top_score:.3f} below threshold "
-            f"{settings.RELEVANCE_THRESHOLD} — returning empty"
-        )
-        return []
-
-    # Step 9: Return top chunks
-    return reranked_chunks
+    return reranked[:settings.RERANK_TOP_N]

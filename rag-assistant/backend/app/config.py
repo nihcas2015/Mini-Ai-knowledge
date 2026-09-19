@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY_1: str = ""
     GROQ_API_KEY_2: str = ""
     GROQ_API_KEY_3: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
 
     # --- OpenRouter API keys (3x for rotation, §15) ---
     OPENROUTER_API_KEY_1: str = ""
@@ -30,9 +30,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY_3: str = ""
     GEMINI_MODEL: str = "gemini-2.0-flash"
 
-    # --- Cohere API key (reranking, §5) ---
-    COHERE_API_KEY: str = ""
-    COHERE_RERANK_MODEL: str = "rerank-english-v3.0"
+    # --- Reranking (flashrank) ---
+    RERANKER_MODEL: str = "ms-marco-MiniLM-L-12-v2"
 
     # --- Telegram notifications (§16) ---
     TELEGRAM_BOT_TOKEN: str = ""
@@ -49,6 +48,8 @@ class Settings(BaseSettings):
     EMBEDDING_BATCH_SIZE: int = 32
 
     # --- Qdrant paths (§3) ---
+    QDRANT_CLOUD_URL: str = ""
+    QDRANT_CLOUD_API_KEY: str = ""
     QDRANT_BASE_PATH: str = "/app/data/qdrant_base"
     QDRANT_BASE_COLLECTION: str = "base_knowledge"
 
