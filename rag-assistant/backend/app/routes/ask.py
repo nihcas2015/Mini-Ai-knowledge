@@ -79,20 +79,15 @@ async def ask_question(payload: AskRequest, request: Request):
                 source_filter=payload.source_filter,
             )
 
-            # Step 3: If no relevant chunks found (below threshold), return fallback
-            if not chunks:
-                yield f"data: {json.dumps({'type': 'token', 'content': FALLBACK_MESSAGE})}\n\n"
-                final = AskResponse(
-                    answer=FALLBACK_MESSAGE,
-                    citations=[],
-                    provider_used="none",
+            # Step 3: Build context block (§6 steps 1-3)
+            if chunks:
+                context_block = build_context_block(chunks)
+            else:
+                context_block = (
+                    "(No matching document passages found in the knowledge base. "
+                    "Provide a helpful, natural, and comprehensive response using your broad knowledge, "
+                    "and mention that users can also upload or query relevant documents.)"
                 )
-                yield f"data: {json.dumps({'type': 'final', 'data': final.model_dump()})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-
-            # Step 4: Build context and prompt (§6 steps 1-3)
-            context_block = build_context_block(chunks)
             user_message = build_user_message(
                 question=question,
                 context_block=context_block,

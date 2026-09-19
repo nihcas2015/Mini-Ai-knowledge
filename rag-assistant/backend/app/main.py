@@ -59,25 +59,34 @@ async def _index_base_knowledge():
             _ready = True
             return
 
-        pdf_files = [f for f in os.listdir(kb_dir) if f.lower().endswith(".pdf")]
-        if not pdf_files:
-            logger.info("No base PDFs found in knowledge_base/. Starting with empty base.")
+        kb_files = [f for f in os.listdir(kb_dir) if f.lower().endswith((".pdf", ".txt", ".md"))]
+        if not kb_files:
+            logger.info("No base documents found in knowledge_base/. Starting with empty base.")
             _ready = True
             return
 
         all_child_chunks = []
 
-        for pdf_file in pdf_files:
-            pdf_path = os.path.join(kb_dir, pdf_file)
-            logger.info(f"Indexing base PDF: {pdf_file}")
+        for kb_file in kb_files:
+            file_path = os.path.join(kb_dir, kb_file)
+            logger.info(f"Indexing base document: {kb_file}")
 
             try:
-                with open(pdf_path, "rb") as f:
-                    file_bytes = f.read()
+                if kb_file.lower().endswith(".pdf"):
+                    with open(file_path, "rb") as f:
+                        file_bytes = f.read()
+                    elements = extract_pdf(file_bytes, kb_file)
+                else:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        text_content = f.read()
+                    paragraphs = [p.strip() for p in text_content.split("\n\n") if len(p.strip()) > 10]
+                    elements = [
+                        {"type": "narrative", "text": p, "page_number": 1, "metadata": {}}
+                        for p in paragraphs
+                    ]
 
-                elements = extract_pdf(file_bytes, pdf_file)
                 parent_chunks, child_chunks = create_hierarchical_chunks(
-                    elements, pdf_file, "base"
+                    elements, kb_file, "base"
                 )
 
                 if child_chunks:
