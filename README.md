@@ -1,6 +1,7 @@
 # Mini AI Knowledge System
 
 **Live demo:** [https://miniaiknowledge.vercel.app](https://miniaiknowledge.vercel.app/)  
+**Author:** Built by Sachin
 
 
 An advanced, intelligent document-powered RAG assistant built with pure LangChain LCEL. Answers questions grounded strictly in a set of documents — a curated base knowledge library plus anything a visitor uploads in their own session — with real-time streaming citations, while gracefully handling general conversational queries with an explicit `LLM Reply` badge.
@@ -22,7 +23,7 @@ An advanced, intelligent document-powered RAG assistant built with pure LangChai
 
 ## Project Structure
 
-```
+```text
 Mini Ai knowledge/
 └── rag-assistant/
     ├── backend/

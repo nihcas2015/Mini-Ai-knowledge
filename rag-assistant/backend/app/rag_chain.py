@@ -40,6 +40,27 @@ SYSTEM_PROMPT = (
 
 
 def parse_pdf_file(file_bytes: bytes, filename: str) -> List[Document]:
+    import io
+
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(file_bytes))
+        documents = []
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text() or ""
+            text = text.strip()
+            if len(text) > 10:
+                documents.append(
+                    Document(
+                        page_content=text,
+                        metadata={"filename": filename, "page_number": i + 1}
+                    )
+                )
+        if documents:
+            return documents
+    except Exception as e:
+        logger.warning(f"pypdf fast extraction failed for {filename}: {e}. Trying unstructured...")
+
     import tempfile
     from unstructured.partition.pdf import partition_pdf
 

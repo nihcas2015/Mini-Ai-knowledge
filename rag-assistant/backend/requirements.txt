@@ -4,6 +4,7 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-multipart>=0.0.6
 slowapi>=0.1.9
+pypdf>=4.0.0
 unstructured[pdf]>=0.11.0
 langchain>=0.2.0
 langchain-core>=0.2.0
