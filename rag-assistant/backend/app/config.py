@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY_1: str = ""
     GROQ_API_KEY_2: str = ""
     GROQ_API_KEY_3: str = ""
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
 
     # --- OpenRouter API keys (3x for rotation, §15) ---
     OPENROUTER_API_KEY_1: str = ""
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY_1: str = ""
     GEMINI_API_KEY_2: str = ""
     GEMINI_API_KEY_3: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # --- Reranking (Cohere + Flashrank fallback) ---
     COHERE_API_KEY: str = ""
