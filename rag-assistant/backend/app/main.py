@@ -106,20 +106,20 @@ async def _index_base_knowledge():
                     all_child_chunks.extend(child_chunks)
 
                     logger.info(
-                        f"  Indexed {pdf_file}: {len(child_chunks)} chunks"
+                        f"  Indexed {kb_file}: {len(child_chunks)} chunks"
                     )
                 else:
-                    logger.warning(f"  No chunks produced for {pdf_file}")
+                    logger.warning(f"  No chunks produced for {kb_file}")
 
             except Exception as e:
-                logger.error(f"  Failed to index {pdf_file}: {e}", exc_info=True)
+                logger.error(f"  Failed to index {kb_file}: {e}", exc_info=True)
 
         # Build BM25 index for base knowledge
         if all_child_chunks:
             bm25.build_index(settings.QDRANT_BASE_COLLECTION, all_child_chunks)
             logger.info(
                 f"Base knowledge indexed: {len(all_child_chunks)} total chunks "
-                f"from {len(pdf_files)} PDFs"
+                f"from {len(kb_files)} documents"
             )
 
         _ready = True
