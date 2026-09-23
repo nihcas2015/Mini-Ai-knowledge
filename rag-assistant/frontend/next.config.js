@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://65.2.69.137:8000';
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://13.200.235.224:8000';
     return [
       {
         source: '/api/backend/:path*',
