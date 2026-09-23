@@ -2,7 +2,7 @@ function getApiUrl(): string {
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     return '/api/backend';
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://65.2.69.137:8000';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://13.200.235.224:8000';
 }
 
 export async function createSession(): Promise<string> {
